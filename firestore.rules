@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && userDoc().data != null
+        && userDoc().data.role == 'Admin';
+    }
+
+    function isUser() {
+      return isSignedIn()
+        && userDoc().data != null
+        && userDoc().data.role in ['Admin', 'User'];
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ─── users collection ────────────────────────────────────────────────────
+    // Admins can read/write all users.
+    // Each user can read and update their own document (not delete, not change role).
+
+    match /users/{uid} {
+      allow read: if isAdmin() || isOwner(uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (isOwner(uid) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow delete: if isAdmin();
+    }
+
+    // ─── pending_invites collection ──────────────────────────────────────────
+    // Only admins manage invites; invited user can read their own invite.
+
+    match /pending_invites/{email} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.token.email == email);
+      allow write: if isAdmin();
+    }
+
+    // ─── app_settings collection ─────────────────────────────────────────────
+    // Readable by all authenticated users; writable only by admins.
+
+    match /app_settings/{docId} {
+      allow read: if isUser();
+      allow write: if isAdmin();
+    }
+
+    // ─── Example: a generic "records" collection ─────────────────────────────
+    // Users can read; admins can write. Extend or replace with your own collections.
+
+    match /records/{docId} {
+      allow read: if isUser();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Deny everything else ────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

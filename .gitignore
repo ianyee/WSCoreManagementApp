@@ -1,0 +1,13 @@
+.env.local
+node_modules/
+hosting/node_modules/
+hosting/dist/
+functions/node_modules/
+emulator-ui/node_modules/
+emulator-ui/dist/
+scripts/node_modules/
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+storage-debug.log

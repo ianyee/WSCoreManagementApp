@@ -1,0 +1,12 @@
+{
+  "name": "firebase-boilerplate-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "node seed-emulator.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.2.0"
+  }
+}

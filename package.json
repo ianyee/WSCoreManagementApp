@@ -1,0 +1,20 @@
+{
+  "name": "firebase-boilerplate",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run emulators\" \"npm run hosting:dev\" \"npm run viewer:dev\"",
+    "emulators": "firebase emulators:start --project demo-project",
+    "hosting:dev": "npm run dev --prefix hosting",
+    "hosting:build": "npm run build --prefix hosting",
+    "viewer:dev": "npm run dev --prefix emulator-ui",
+    "seed": "npm run seed --prefix scripts",
+    "deploy": "npm run hosting:build && firebase deploy",
+    "deploy:hosting": "npm run hosting:build && firebase deploy --only hosting",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:rules": "firebase deploy --only firestore:rules,storage"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
