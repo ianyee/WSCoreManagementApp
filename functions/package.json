@@ -11,11 +11,15 @@
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "express": "^4.19.2",
-    "firebase-admin": "^12.2.0",
-    "firebase-functions": "^5.0.1"
+    "firebase-admin": "^13.8.0",
+    "firebase-functions": "^7.2.5"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
     "eslint-config-google": "^0.14.0"
+  },
+  "overrides": {
+    "uuid": "^14.0.0",
+    "@tootallnate/once": "^3.0.1"
   }
 }
