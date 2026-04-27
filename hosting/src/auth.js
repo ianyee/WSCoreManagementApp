@@ -15,8 +15,9 @@ import { showToast } from './ui.js';
 // ─── Microsoft OAuth Provider ────────────────────────────────────────────────
 const microsoftProvider = new OAuthProvider('microsoft.com');
 microsoftProvider.setCustomParameters({
-  // Uncomment and set your tenant ID for single-tenant (org) login:
-  // tenant: import.meta.env.VITE_MICROSOFT_TENANT_ID,
+  // Locks sign-in to the workscale.ph Azure AD tenant only.
+  // Users from other organisations/personal accounts will be rejected by Azure.
+  tenant: import.meta.env.VITE_MICROSOFT_TENANT_ID || 'common',
   prompt: 'select_account',
 });
 
@@ -66,6 +67,16 @@ export async function signInWithEmail(email, password) {
 // ─── Sign In: Microsoft SSO ──────────────────────────────────────────────────
 export async function signInWithMicrosoft() {
   const result = await signInWithPopup(auth, microsoftProvider);
+  // Guard: reject accounts that are not from the @workscale.ph domain.
+  // (Azure tenant restriction above is the primary gate; this is a safety net.)
+  const email = result.user.email || '';
+  const allowed = import.meta.env.VITE_MICROSOFT_TENANT_ID
+    ? email.endsWith('@workscale.ph')
+    : true;  // dev/emulator: allow any account
+  if (!allowed) {
+    await firebaseSignOut(auth);
+    throw Object.assign(new Error('Only @workscale.ph accounts are allowed.'), { code: 'auth/unauthorized-domain' });
+  }
   await finalizeLogin(result.user);
 }
 
