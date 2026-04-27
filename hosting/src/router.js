@@ -1,7 +1,7 @@
 import { state } from './state.js';
 
 // ─── Route registry ───────────────────────────────────────────────────────────
-// Each route has: path, requiredRole (null = any authed user), loader function.
+// Each route: path, public (no auth), requiredRole (null = any authed user)
 
 const routes = [
   {
@@ -15,11 +15,10 @@ const routes = [
     loader: () => import('./pages/dashboard.js'),
   },
   {
-    path: '/admin',
-    requiredRole: 'Admin',
+    path: '/users',
+    requiredRole: 'SuperAdmin',
     loader: () => import('./pages/admin.js'),
   },
-  // Add more routes here
 ];
 
 const appEl = () => document.getElementById('app');

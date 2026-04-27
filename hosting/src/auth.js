@@ -1,12 +1,13 @@
-import { auth } from './firebase.js';
+import { auth, functions } from './firebase.js';
 import {
   OAuthProvider,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebase.js';
+import { httpsCallable } from 'firebase/functions';
 import { state } from './state.js';
 import { router } from './router.js';
 import { showToast } from './ui.js';
@@ -14,71 +15,72 @@ import { showToast } from './ui.js';
 // ─── Microsoft OAuth Provider ────────────────────────────────────────────────
 const microsoftProvider = new OAuthProvider('microsoft.com');
 microsoftProvider.setCustomParameters({
-  // Restrict to a specific tenant / domain if needed.
-  // tenant: 'YOUR_TENANT_ID',  // Uncomment + set for single-tenant apps
+  // Uncomment and set your tenant ID for single-tenant (org) login:
+  // tenant: import.meta.env.VITE_MICROSOFT_TENANT_ID,
   prompt: 'select_account',
 });
 
-// Allowed email domain(s). Leave empty to allow any Microsoft account.
-const ALLOWED_DOMAINS = (import.meta.env.VITE_ALLOWED_EMAIL_DOMAINS || '')
-  .split(',')
-  .map((d) => d.trim().toLowerCase())
-  .filter(Boolean);
+// Callable function refs
+const setCustomClaimsFn = httpsCallable(functions, 'setCustomClaims');
 
-function isDomainAllowed(email) {
-  if (!ALLOWED_DOMAINS.length) return true;
-  const domain = email.split('@')[1]?.toLowerCase();
-  return ALLOWED_DOMAINS.includes(domain);
+// ─── Session Cookie: request minting via HTTPS function ──────────────────────
+async function mintSessionCookie(idToken) {
+  const fnUrl = import.meta.env.VITE_CREATE_SESSION_URL;
+  if (!fnUrl) {
+    // In emulator dev, skip session cookie minting (not supported locally)
+    console.warn('[auth] VITE_CREATE_SESSION_URL not set — skipping session cookie.');
+    return;
+  }
+  const res = await fetch(fnUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create session cookie.');
+  }
 }
 
-// ─── Sign In ─────────────────────────────────────────────────────────────────
+// ─── Post-login: set claims, refresh token, mint session cookie ───────────────
+async function finalizeLogin(firebaseUser) {
+  // 1. Set custom claims server-side from userPermissions
+  await setCustomClaimsFn();
+
+  // 2. Force token refresh so new claims are available on client
+  const freshToken = await firebaseUser.getIdToken(true);
+
+  // 3. Mint cross-domain session cookie
+  await mintSessionCookie(freshToken);
+
+  return freshToken;
+}
+
+// ─── Sign In: Email / Password ────────────────────────────────────────────────
+export async function signInWithEmail(email, password) {
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  await finalizeLogin(result.user);
+}
+
+// ─── Sign In: Microsoft SSO ──────────────────────────────────────────────────
 export async function signInWithMicrosoft() {
-  try {
-    const result = await signInWithPopup(auth, microsoftProvider);
-    const user = result.user;
+  const result = await signInWithPopup(auth, microsoftProvider);
+  await finalizeLogin(result.user);
+}
 
-    if (!isDomainAllowed(user.email)) {
-      await firebaseSignOut(auth);
-      throw new Error(`Access restricted to allowed domains.`);
-    }
-
-    // Check invite or existing user
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-
-    if (!userSnap.exists()) {
-      // Check pending invite by email
-      const inviteRef = doc(db, 'pending_invites', user.email.toLowerCase());
-      const inviteSnap = await getDoc(inviteRef);
-
-      if (!inviteSnap.exists()) {
-        await firebaseSignOut(auth);
-        throw new Error('You have not been invited to this application.');
-      }
-
-      // Provision new user record from invite
-      const inviteData = inviteSnap.data();
-      await setDoc(userRef, {
-        uid: user.uid,
-        email: user.email.toLowerCase(),
-        displayName: user.displayName || '',
-        photoURL: user.photoURL || '',
-        role: inviteData.role || 'User',
-        createdAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-      });
-    } else {
-      // Update last login
-      await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
-    }
-  } catch (err) {
-    console.error('[auth] signInWithMicrosoft error:', err.code, err.message, err);
-    throw err;
-  }
+// ─── Password Reset ──────────────────────────────────────────────────────────
+export async function resetPassword(email) {
+  await sendPasswordResetEmail(auth, email);
 }
 
 // ─── Sign Out ─────────────────────────────────────────────────────────────────
 export async function signOut() {
+  // Revoke server-side session cookie
+  const fnUrl = import.meta.env.VITE_REVOKE_SESSION_URL;
+  if (fnUrl) {
+    await fetch(fnUrl, { method: 'POST', credentials: 'include' }).catch(() => {});
+  }
   await firebaseSignOut(auth);
 }
 
@@ -87,20 +89,19 @@ export function initAuth() {
   onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser) {
       try {
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          // User authenticated but no Firestore record — sign them out
-          await firebaseSignOut(auth);
-          return;
-        }
-
-        state.sessionUser = { uid: firebaseUser.uid, ...userSnap.data() };
+        const token = await firebaseUser.getIdTokenResult();
+        state.sessionUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName || firebaseUser.email,
+          photoURL: firebaseUser.photoURL || null,
+          role: token.claims.role || 'User',
+          domains: token.claims.domains || {},
+        };
         router.navigate(state.lastRoute || '/dashboard');
       } catch (err) {
-        console.error('[auth] onAuthStateChanged error:', err.code, err.message, err);
-        showToast('Failed to load user profile. Please try again.', 'error');
+        console.error('[auth] onAuthStateChanged error:', err);
+        showToast('Failed to load session. Please sign in again.', 'error');
         await firebaseSignOut(auth);
       }
     } else {

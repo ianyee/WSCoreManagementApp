@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "demo-project"
+    "default": "workscale-core",
+    "production": "workscale-core"
   }
 }
 

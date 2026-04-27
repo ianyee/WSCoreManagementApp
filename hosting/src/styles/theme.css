@@ -1,0 +1,138 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   HRWEBAPP — DESIGN TOKENS
+   ───────────────────────────────────────────────────────────────────────────────
+   This is the single source of truth for all color, spacing, shadow, and
+   animation tokens. To retheme the entire app, only edit this file.
+
+   Light-mode values live in :root.
+   Dark-mode overrides live in html.dark.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Brand / Accent ───────────────────────────────────────────────────────── */
+  --primary:        #10B981;    /* emerald-500  */
+  --primary-hover:  #059669;    /* emerald-600  */
+  --primary-light:  rgba(16, 185, 129, 0.10);
+  --accent:         #10B981;
+  --accent-hover:   #059669;
+  --accent-bg:      #E0FDF4;    /* emerald-50   */
+  --accent-text:    #065F46;    /* emerald-900  */
+  --accent-border:  rgba(16, 185, 129, 0.25);
+  --brand-logo:     #10B981;
+
+  /* ── Canvas / Surfaces ────────────────────────────────────────────────────── */
+  --bg:             #F8FAFC;    /* slate-50     */
+  --canvas-bg:      #F8FAFC;
+  --bg-surface:     #F1F5F9;    /* slate-100    */
+  --bg-mint:        #F1F5F9;
+  --bg-card:        #FFFFFF;
+  --color-surface:  #FFFFFF;
+  --card-bg:        #FFFFFF;
+  --card-border:    #E2E8F0;    /* slate-200    */
+
+  /* ── Sidebar ──────────────────────────────────────────────────────────────── */
+  --sidebar-bg:              #0F172A;   /* slate-900            */
+  --sidebar-nav-text:        #334155;   /* slate-700 (inactive) */
+  --sidebar-nav-text-active: #10B981;   /* emerald              */
+  --sidebar-nav-bg-active:   #1E293B;   /* slate-800            */
+  --sidebar-topbar-bg:       #0F172A;
+  --sidebar-border:          #1E293B;   /* slate-800            */
+  --sidebar-text:            #334155;
+  --sidebar-active:          #10B981;
+
+  /* ── Topbar ───────────────────────────────────────────────────────────────── */
+  --topbar-bg:          #334155;        /* slate-700            */
+  --topbar-border:      #475569;        /* slate-600            */
+  --topbar-icon:        #CBD5E1;        /* slate-300 — visible on dark topbar */
+  --avatar-bg:          #10B981;        /* emerald              */
+  --avatar-text:        #FFFFFF;
+
+  /* ── Blob decorations ────────────────────────────────────────────────────── */
+  --blob-primary:   rgba(16, 185, 129, 0.08);
+  --blob-secondary: rgba(16, 185, 129, 0.04);
+
+  /* ── Glass ────────────────────────────────────────────────────────────────── */
+  --glass-bg:       rgba(255, 255, 255, 0.70);
+  --glass-border:   rgba(226, 232, 240, 0.60);
+  --glass-blur:     blur(12px);
+  --glass-bg-input: rgba(255, 255, 255, 0.80);
+
+  /* ── Borders ──────────────────────────────────────────────────────────────── */
+  --color-border:   #E2E8F0;    /* slate-200    */
+
+  /* ── Typography ───────────────────────────────────────────────────────────── */
+  --text-primary:   #0F172A;    /* slate-900 — heading / primary  */
+  --text-dark:      #0F172A;
+  --text-secondary: #64748B;    /* slate-500 — secondary          */
+  --text-muted:     #94A3B8;    /* slate-400 — muted / placeholder */
+
+  /* ── Status ───────────────────────────────────────────────────────────────── */
+  --success:            #10B981;
+  --success-bg:         rgba(16,  185, 129, 0.10);
+  --warning:            #F59E0B;
+  --warning-bg:         rgba(245, 158,  11, 0.10);
+  --danger:             #EF4444;
+  --danger-bg:          rgba(239,  68,  68, 0.10);
+  --info:               #3B82F6;
+  --info-bg:            rgba( 59, 130, 246, 0.10);
+  --color-success:      #10B981;
+  --color-warning:      #F59E0B;
+  --color-danger:       #EF4444;
+  --color-danger-hover: #DC2626;
+  --color-info:         #3B82F6;
+
+  /* ── Radii ────────────────────────────────────────────────────────────────── */
+  --radius-lg: 28px;
+  --radius-md: 20px;
+  --radius-sm: 12px;
+
+  /* ── Shadows ──────────────────────────────────────────────────────────────── */
+  --shadow-soft:  0 4px 16px rgba(0,0,0,0.05), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-card:  0 10px 40px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-glass: 0 10px 30px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.03);
+  --shadow-float: 0 20px 60px rgba(0,0,0,0.10), 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-up:    0 -4px 20px rgba(0,0,0,0.06);
+
+  /* ── Animation ────────────────────────────────────────────────────────────── */
+  --transition:        150ms ease;
+  --transition-bounce: 200ms cubic-bezier(.34, 1.56, .64, 1);
+
+  font-size: 16px;
+}
+
+/* ── Dark mode overrides ─────────────────────────────────────────────────────── */
+html.dark {
+  /* Surfaces */
+  --bg:             #0F172A;
+  --canvas-bg:      #0F172A;
+  --bg-surface:     #1E293B;
+  --bg-mint:        #1E293B;
+  --bg-card:        rgba(30, 41, 59, 0.90);
+  --card-bg:        rgba(30, 41, 59, 0.90);
+  --card-border:    rgba(255, 255, 255, 0.08);
+  --color-surface:  rgba(30, 41, 59, 0.90);
+
+  /* Sidebar */
+  --sidebar-bg:     #080E1A;
+  --sidebar-border: #1E293B;
+
+  /* Topbar */
+  --topbar-bg:      #0F172A;
+  --topbar-border:  #1E293B;
+
+  /* Borders */
+  --color-border:   rgba(255, 255, 255, 0.10);
+
+  /* Typography */
+  --text-dark:      #F1F5F9;
+  --text-primary:   #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted:     #64748B;
+
+  /* Glass */
+  --glass-bg:       rgba(30, 41, 59, 0.70);
+  --glass-border:   rgba(255, 255, 255, 0.08);
+  --glass-bg-input: rgba(255, 255, 255, 0.06);
+
+  color-scheme: dark;
+}

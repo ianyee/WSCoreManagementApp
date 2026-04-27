@@ -1,10 +1,10 @@
 {
-  "name": "firebase-boilerplate",
+  "name": "ws-core-management",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run emulators\" \"npm run hosting:dev\" \"npm run viewer:dev\"",
-    "emulators": "firebase emulators:start --project demo-project",
+    "emulators": "firebase emulators:start --project workscale-core",
     "hosting:dev": "npm run dev --prefix hosting",
     "hosting:build": "npm run build --prefix hosting",
     "viewer:dev": "npm run dev --prefix emulator-ui",

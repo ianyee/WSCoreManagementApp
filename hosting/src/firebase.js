@@ -11,7 +11,7 @@ const app = initializeApp(firebaseConfig);
 // ─── Services ─────────────────────────────────────────────────────────────────
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const functions = getFunctions(app, 'us-central1'); // change region as needed
+export const functions = getFunctions(app, 'asia-southeast1'); // asia-southeast1 (Singapore)
 export const storage = getStorage(app);
 
 // ─── Emulator connections (dev only) ─────────────────────────────────────────

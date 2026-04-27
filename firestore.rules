@@ -8,61 +8,40 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.role == 'SuperAdmin';
     }
 
     function isAdmin() {
-      return isSignedIn()
-        && userDoc().data != null
-        && userDoc().data.role == 'Admin';
-    }
-
-    function isUser() {
-      return isSignedIn()
-        && userDoc().data != null
-        && userDoc().data.role in ['Admin', 'User'];
+      return isSignedIn() && request.auth.token.role in ['SuperAdmin', 'Admin'];
     }
 
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // ─── users collection ────────────────────────────────────────────────────
-    // Admins can read/write all users.
-    // Each user can read and update their own document (not delete, not change role).
+    // ─── users/{uid} ─────────────────────────────────────────────────────────
+    // Users can read their own profile.
+    // SuperAdmin (via Cloud Functions with Admin SDK) manages all create/update/delete.
+    // Client-side writes limited: owner may update non-sensitive fields only.
 
     match /users/{uid} {
-      allow read: if isAdmin() || isOwner(uid);
-      allow create: if isAdmin();
-      allow update: if isAdmin()
-        || (isOwner(uid) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
-      allow delete: if isAdmin();
+      allow read:   if isOwner(uid) || isAdmin();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin()
+        || (isOwner(uid) && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'createdAt', 'uid']));
+      allow delete: if isSuperAdmin();
     }
 
-    // ─── pending_invites collection ──────────────────────────────────────────
-    // Only admins manage invites; invited user can read their own invite.
+    // ─── userPermissions/{uid} ───────────────────────────────────────────────
+    // Permissions doc holds role + domain access.
+    // Only SuperAdmin (or Cloud Functions using Admin SDK) may write.
+    // Each user may read their own permissions doc (for UI display).
 
-    match /pending_invites/{email} {
-      allow read: if isAdmin() || (isSignedIn() && request.auth.token.email == email);
-      allow write: if isAdmin();
-    }
-
-    // ─── app_settings collection ─────────────────────────────────────────────
-    // Readable by all authenticated users; writable only by admins.
-
-    match /app_settings/{docId} {
-      allow read: if isUser();
-      allow write: if isAdmin();
-    }
-
-    // ─── Example: a generic "records" collection ─────────────────────────────
-    // Users can read; admins can write. Extend or replace with your own collections.
-
-    match /records/{docId} {
-      allow read: if isUser();
-      allow create, update: if isAdmin();
-      allow delete: if isAdmin();
+    match /userPermissions/{uid} {
+      allow read:  if isOwner(uid) || isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     // ─── Deny everything else ────────────────────────────────────────────────
@@ -71,3 +50,4 @@ service cloud.firestore {
     }
   }
 }
+

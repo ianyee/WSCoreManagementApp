@@ -1,5 +1,5 @@
 {
-  "name": "firebase-boilerplate-functions",
+  "name": "ws-core-management-functions",
   "version": "1.0.0",
   "private": true,
   "engines": { "node": "20" },
@@ -9,6 +9,8 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.19.2",
     "firebase-admin": "^12.2.0",
     "firebase-functions": "^5.0.1"
   },

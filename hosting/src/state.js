@@ -3,9 +3,18 @@
 // Assign properties directly: state.sessionUser = {...}
 
 export const state = {
-  /** @type {{ uid: string, email: string, displayName: string, role: 'Admin' | 'User' } | null} */
+  /**
+   * @type {{
+   *   uid: string,
+   *   email: string,
+   *   displayName: string,
+   *   photoURL: string | null,
+   *   role: 'SuperAdmin' | 'Admin' | 'User',
+   *   domains: Record<string, { role: string, access?: string[] }>
+   * } | null}
+   */
   sessionUser: null,
 
-  /** Name of the last route visited (used to redirect after login). */
+  /** Last visited route — used to redirect after login. */
   lastRoute: null,
 };
