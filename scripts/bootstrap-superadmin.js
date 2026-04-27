@@ -1,16 +1,14 @@
 /**
  * bootstrap-superadmin.js
  * ─────────────────────────
- * One-time script to create the first SuperAdmin user in PRODUCTION.
- * Run this AFTER deploying Cloud Functions and Firestore rules.
+ * Creates the first SuperAdmin user. Works in both local emulator and production.
  *
- * Usage:
+ * LOCAL (emulators must be running — npm run emulators):
+ *   node scripts/bootstrap-superadmin.js
+ *
+ * PRODUCTION:
  *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json \
  *     node scripts/bootstrap-superadmin.js
- *
- * Or just run:  firebase auth:import  (for bulk, see Firebase docs)
- *
- * You can also do this entirely via Firebase Console — see comments below.
  */
 
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
@@ -18,12 +16,27 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // ─── Edit these before running ────────────────────────────────────────────────
-const EMAIL        = 'your-email@workscale.ph';     // ← change this
-const PASSWORD     = 'ChangeMe!2025';               // ← change this (user must reset on first login)
-const DISPLAY_NAME = 'Super Admin';                 // ← change this
+const EMAIL        = 'your-email@workscale.ph';  // ← change this
+const PASSWORD     = 'ChangeMe!2025';             // ← change this
+const DISPLAY_NAME = 'Super Admin';               // ← change this
 // ─────────────────────────────────────────────────────────────────────────────
 
-initializeApp({ credential: applicationDefault(), projectId: 'workscale-core' });
+const isLocal = !process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+if (isLocal) {
+  // Point Admin SDK at local emulators — no credentials needed
+  process.env.FIREBASE_AUTH_EMULATOR_HOST     = 'localhost:9099';
+  process.env.FIRESTORE_EMULATOR_HOST         = 'localhost:8080';
+  console.log('ℹ️  Running against LOCAL emulators (localhost:9099 / localhost:8080)\n');
+} else {
+  console.log('ℹ️  Running against PRODUCTION (workscale-core)\n');
+}
+
+initializeApp(
+  isLocal
+    ? { projectId: 'workscale-core' }
+    : { credential: applicationDefault(), projectId: 'workscale-core' }
+);
 
 const auth = getAuth();
 const db   = getFirestore();
@@ -63,10 +76,11 @@ async function bootstrap() {
   await auth.setCustomUserClaims(user.uid, { role: 'SuperAdmin', domains: {}, sso: true });
   console.log(`  ✓ Custom claims set  { role: 'SuperAdmin', sso: true }`);
 
-  console.log('\n✅ Done! Log in at https://workscale-core.web.app');
+  console.log('\n✅ Done!');
+  console.log(`   URL:      ${isLocal ? 'http://localhost:3000' : 'https://workscale-core.web.app'}`);
   console.log(`   Email:    ${EMAIL}`);
   console.log(`   Password: ${PASSWORD}`);
-  console.log('\n⚠️  Change the password immediately after first login.');
+  if (!isLocal) console.log('\n⚠️  Change the password immediately after first login.');
 }
 
 bootstrap().catch(err => { console.error('Bootstrap failed:', err); process.exit(1); });
