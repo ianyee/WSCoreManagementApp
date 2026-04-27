@@ -16,10 +16,10 @@ setGlobalOptions({ region: 'asia-southeast1' });
 const SESSION_COOKIE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 // ─── Helper: assert caller is SuperAdmin ─────────────────────────────────────
+// Reads role from the verified custom claim on the token — fast, no extra DB read.
 async function assertSuperAdmin(auth) {
   if (!auth?.uid) throw new HttpsError('unauthenticated', 'Not authenticated.');
-  const snap = await db.doc(`users/${auth.uid}`).get();
-  if (!snap.exists || snap.data().role !== 'SuperAdmin') {
+  if (auth.token?.role !== 'SuperAdmin') {
     throw new HttpsError('permission-denied', 'SuperAdmin role required.');
   }
 }
@@ -194,12 +194,12 @@ exports.adminCreateUser = onCall(async (request) => {
   const uid = userRecord.uid;
   const now = FieldValue.serverTimestamp();
 
-  // Create Firestore user doc
+  // Create Firestore user doc (no role field — role lives in userPermissions only)
   await db.doc(`users/${uid}`).set({
     uid,
     email: email.toLowerCase(),
     displayName: displayName || '',
-    role: role || 'User',
+    photoURL: '',
     createdAt: now,
     createdBy: request.auth.uid,
     lastLoginAt: null,
@@ -256,7 +256,7 @@ exports.adminListUsers = onCall(async (request) => {
       uid: u.uid,
       email: u.email,
       displayName: u.displayName,
-      role: u.role,
+      role: permsMap[u.uid]?.role || 'User',
       domains: permsMap[u.uid]?.domains || {},
       createdAt: u.createdAt?.toDate?.()?.toISOString() || null,
       lastLoginAt: u.lastLoginAt?.toDate?.()?.toISOString() || null,
@@ -282,7 +282,7 @@ exports.getAdminStats = onCall(async (request) => {
 exports.onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
   const user = event.data?.data();
   if (!user) return;
-  console.log(`[SSO] New user provisioned: ${user.email} (role: ${user.role})`);
+  console.log(`[SSO] New user provisioned: ${user.email}`);
 });
 
 // ─── Utility: parse cookie header ────────────────────────────────────────────
