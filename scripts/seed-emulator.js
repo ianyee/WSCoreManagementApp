@@ -1,23 +1,139 @@
 /**
  * seed-emulator.js
  * ─────────────────
- * Seeds both the Auth and Firestore emulators with dev accounts and data.
- * Run: node seed-emulator.js
+ * Seeds Auth + Firestore emulators with SSO dev accounts.
  *
- * Requires emulators to be running:
- *   Auth:      localhost:9099
- *   Firestore: localhost:8080
+ * Run AFTER starting emulators:
+ *   npm run emulators   (from root)
+ *   node scripts/seed-emulator.js
  */
 
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
-// ─── Point admin SDK at both emulators ───────────────────────────────────────
+// ─── Point admin SDK at emulators ────────────────────────────────────────────
 process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
 process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
 
-initializeApp({ projectId: 'demo-project' });
+initializeApp({ projectId: 'workscale-core' });
+
+const auth = getAuth();
+const db = getFirestore();
+
+// ─── Seed accounts ────────────────────────────────────────────────────────────
+const SUPERADMIN_UID = 'seed-superadmin-001';
+const ADMIN_UID      = 'seed-admin-001';
+const USER_UID       = 'seed-user-001';
+
+const accounts = [
+  { uid: SUPERADMIN_UID, email: 'superadmin@example.com', displayName: 'Seed SuperAdmin' },
+  { uid: ADMIN_UID,      email: 'admin@example.com',      displayName: 'Seed Admin'      },
+  { uid: USER_UID,       email: 'user@example.com',       displayName: 'Seed User'       },
+];
+
+const now = Timestamp.now();
+
+// ─── Firestore: users ─────────────────────────────────────────────────────────
+const users = [
+  {
+    id: SUPERADMIN_UID,
+    data: { uid: SUPERADMIN_UID, email: 'superadmin@example.com', displayName: 'Seed SuperAdmin', photoURL: '', createdAt: now },
+  },
+  {
+    id: ADMIN_UID,
+    data: { uid: ADMIN_UID, email: 'admin@example.com', displayName: 'Seed Admin', photoURL: '', createdAt: now },
+  },
+  {
+    id: USER_UID,
+    data: { uid: USER_UID, email: 'user@example.com', displayName: 'Seed User', photoURL: '', createdAt: now },
+  },
+];
+
+// ─── Firestore: userPermissions ───────────────────────────────────────────────
+const permissions = [
+  {
+    id: SUPERADMIN_UID,
+    data: {
+      role: 'SuperAdmin',
+      domains: {},
+    },
+  },
+  {
+    id: ADMIN_UID,
+    data: {
+      role: 'Admin',
+      domains: { 'ra-app': { role: 'Admin' } },
+    },
+  },
+  {
+    id: USER_UID,
+    data: {
+      role: 'User',
+      domains: { 'ra-app': { role: 'Employee' } },
+    },
+  },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function importAuthUsers(accts) {
+  const records = accts.map(({ uid, email, displayName }) => ({
+    uid,
+    email,
+    displayName: displayName || '',
+    emailVerified: true,
+    disabled: false,
+    passwordHash: Buffer.from('password123'),   // emulator accepts any bytes
+    providerData: [
+      { uid: email, email, displayName: displayName || '', providerId: 'password' },
+    ],
+  }));
+
+  const result = await auth.importUsers(records, {
+    hash: { algorithm: 'HMAC_SHA256', key: Buffer.from('dev-key') },
+  });
+  result.errors.forEach(e => {
+    console.error(`  ✗ ${records[e.index].email} — ${e.error.message}`);
+  });
+}
+
+async function setCustomClaims(uid, claims) {
+  await auth.setCustomUserClaims(uid, claims);
+}
+
+// ─── Seed ─────────────────────────────────────────────────────────────────────
+
+async function seed() {
+  // Auth emulator accounts
+  console.log('Seeding Auth emulator…');
+  await importAuthUsers(accounts);
+
+  // Custom claims (match what setCustomClaims Cloud Function would set)
+  await setCustomClaims(SUPERADMIN_UID, { role: 'SuperAdmin', domains: {}, sso: true });
+  await setCustomClaims(ADMIN_UID,      { role: 'Admin', domains: { 'ra-app': { role: 'Admin' } }, sso: true });
+  await setCustomClaims(USER_UID,       { role: 'User',  domains: { 'ra-app': { role: 'Employee' } }, sso: true });
+  accounts.forEach(a => console.log(`  ✓ auth  ${a.email}  (uid: ${a.uid})`));
+
+  // Firestore documents
+  console.log('\nSeeding Firestore emulator…');
+  const batch = db.batch();
+  for (const u of users)       batch.set(db.collection('users').doc(u.id),           u.data);
+  for (const p of permissions)  batch.set(db.collection('userPermissions').doc(p.id), p.data);
+  await batch.commit();
+  console.log(`  ✓ users             (${users.length})`);
+  console.log(`  ✓ userPermissions   (${permissions.length})`);
+
+  console.log('\n── Dev accounts ──────────────────────────────────────────────');
+  console.log('  superadmin@example.com  role: SuperAdmin  password: password123');
+  console.log('  admin@example.com       role: Admin       password: password123');
+  console.log('  user@example.com        role: User        password: password123');
+  console.log('──────────────────────────────────────────────────────────────\n');
+  console.log('Done.');
+}
+
+seed().catch(err => { console.error('Seed failed:', err); process.exit(1); });
+
 
 const auth = getAuth();
 const db = getFirestore();

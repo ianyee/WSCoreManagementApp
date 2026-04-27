@@ -13,7 +13,7 @@ const firebaseConfig = isDev && !hasRealConfig
       apiKey: 'demo-api-key',
       authDomain: 'workscale-core.firebaseapp.com',
       projectId: 'workscale-core',
-      storageBucket: 'workscale-core.appspot.com',
+      storageBucket: 'workscale-core.firebasestorage.app',
       messagingSenderId: '000000000000',
       appId: '1:000000000000:web:0000000000000000',
     }
