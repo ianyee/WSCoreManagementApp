@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "setup": "npm install && npm install --prefix functions && npm install --prefix hosting && npm install --prefix emulator-ui && npm install --prefix scripts",
+    "audit": "npm audit && npm audit --prefix functions && npm audit --prefix hosting && npm audit --prefix emulator-ui && npm audit --prefix scripts",
+    "audit:fix": "npm audit fix && npm audit fix --prefix functions && npm audit fix --prefix hosting && npm audit fix --prefix emulator-ui && npm audit fix --prefix scripts",
     "dev": "concurrently \"npm run emulators\" \"npm run hosting:dev\" \"npm run viewer:dev\"",
     "emulators": "firebase emulators:start --project workscale-core",
     "hosting:dev": "npm run dev --prefix hosting",
