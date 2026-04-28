@@ -117,12 +117,22 @@ export function initAuth() {
     if (firebaseUser) {
       try {
         const token = await firebaseUser.getIdTokenResult();
+        const role = token.claims.role || 'User';
+
+        // This portal is SuperAdmin-only. Sign out anyone else immediately.
+        if (role !== 'SuperAdmin') {
+          showToast('Access denied. This portal is for SuperAdmins only.', 'error');
+          await signOut().catch(() => {});
+          // onAuthStateChanged(null) below will redirect to /login
+          return;
+        }
+
         state.sessionUser = {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: firebaseUser.displayName || firebaseUser.email,
           photoURL: firebaseUser.photoURL || null,
-          role: token.claims.role || 'User',
+          role,
           domains: token.claims.domains || {},
         };
         router.navigate(state.lastRoute || '/dashboard');

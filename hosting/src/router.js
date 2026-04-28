@@ -11,13 +11,18 @@ const routes = [
   },
   {
     path: '/dashboard',
-    requiredRole: null, // any authenticated user
+    requiredRole: 'SuperAdmin', // this portal is SuperAdmin-only
     loader: () => import('./pages/dashboard.js'),
   },
   {
     path: '/users',
     requiredRole: 'SuperAdmin',
     loader: () => import('./pages/admin.js'),
+  },
+  {
+    path: '/logs',
+    requiredRole: 'SuperAdmin',
+    loader: () => import('./pages/logs.js'),
   },
 ];
 

@@ -673,3 +673,54 @@ html.dark .login-card { background: rgba(15,23,42,0.95); border-color: #1E293B; 
 .toast--error   { border-left-color: var(--danger); }
 .toast--warning { border-left-color: var(--warning); }
 .toast--info    { border-left-color: var(--info); }
+
+/* ─── Audit log action badges ──────────────────────────────────────────────── */
+.log-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: .75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.log-badge--green { background: rgba(16,185,129,0.12); color: #065F46; }
+.log-badge--red   { background: rgba(239,68,68,0.12);  color: #991B1B; }
+.log-badge--blue  { background: rgba(59,130,246,0.12); color: #1D4ED8; }
+.log-badge--grey  { background: rgba(100,116,139,0.12);color: #475569; }
+html.dark .log-badge--green { background: rgba(16,185,129,0.20); color: #6EE7B7; }
+html.dark .log-badge--red   { background: rgba(239,68,68,0.20);  color: #FCA5A5; }
+html.dark .log-badge--blue  { background: rgba(59,130,246,0.20); color: #93C5FD; }
+html.dark .log-badge--grey  { background: rgba(100,116,139,0.20);color: #94A3B8; }
+
+/* ─── Card footer ──────────────────────────────────────────────────────────── */
+.card-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ─── Audit log filter pills ───────────────────────────────────────────────── */
+.log-filter-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.log-filter-pill {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: .78rem;
+  font-weight: 600;
+  border: 1.5px solid var(--card-border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.log-filter-pill:hover { background: var(--bg-surface); color: var(--text-primary); }
+.log-filter-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+html.dark .log-filter-pill.active { background: var(--primary); border-color: var(--primary); }
+

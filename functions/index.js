@@ -83,6 +83,10 @@ async function verifyAppCheck(req, res) {
 // Console → Databases → (default) → TTL → field: expireAt, collection: auditLog
 const IS_EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
 const AUDIT_TTL_DAYS = 90;
+// Feature flag: set to false to stop writing login events to the audit log.
+// All other admin mutation events (createUser, deleteUser, setUserPermissions)
+// are always logged regardless of this flag.
+const LOG_LOGINS = true;
 
 async function writeAuditLog(action, actor, details = {}) {
   if (IS_EMULATOR) return; // skip in local dev
@@ -155,8 +159,8 @@ exports.createSessionCookie = onRequest(async (req, res) => {
     }
 
     try {
-      // Verify the ID token first
-      await getAuth().verifyIdToken(idToken);
+      // Verify the ID token first — capture decoded claims for audit log
+      const decoded = await getAuth().verifyIdToken(idToken);
 
       // Mint session cookie
       const sessionCookie = await getAuth().createSessionCookie(idToken, {
@@ -168,6 +172,13 @@ exports.createSessionCookie = onRequest(async (req, res) => {
         `__session=${sessionCookie}; Max-Age=${SESSION_COOKIE_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.workscale.ph`,
       ]);
       res.status(200).json({ status: 'success' });
+
+      // Audit: log successful login (fire-and-forget, after response sent)
+      // Controlled by LOG_LOGINS flag — set to false to silence login events.
+      if (LOG_LOGINS) {
+        const provider = decoded.firebase?.sign_in_provider || 'unknown';
+        await writeAuditLog('login', decoded, { provider });
+      }
     } catch (err) {
       console.error('[createSessionCookie] error:', err.message);
       res.status(401).json({ error: 'Unauthorized.' });
@@ -352,6 +363,50 @@ exports.getAdminStats = onRequest(async (req, res) => {
     res.status(200).json({ totalUsers: usersSnap.size });
   } catch (err) {
     console.error('[getAdminStats] error:', err.message);
+    res.status(500).json({ error: 'Internal error.' });
+  }
+});
+
+// ─── adminListAuditLog ───────────────────────────────────────────────────────
+// Returns paginated audit log entries (25 per page), newest first.
+// Query param: startAfter=<docId> for cursor-based pagination.
+exports.adminListAuditLog = onRequest(async (req, res) => {
+  if (handleCors(req, res)) return;
+  if (req.method !== 'GET' && req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed.' }); return; }
+  if (!await verifyAppCheck(req, res)) return;
+
+  const decoded = await assertBearerSuperAdmin(req, res);
+  if (!decoded) return;
+
+  try {
+    const PAGE_SIZE = 25;
+    const cursorId = req.query.startAfter || null;
+
+    let query = db.collection('auditLog').orderBy('timestamp', 'desc').limit(PAGE_SIZE + 1);
+    if (cursorId) {
+      const cursorDoc = await db.collection('auditLog').doc(cursorId).get();
+      if (cursorDoc.exists) query = query.startAfter(cursorDoc);
+    }
+
+    const snap = await query.get();
+    const docs = snap.docs.slice(0, PAGE_SIZE);
+    const hasMore = snap.docs.length > PAGE_SIZE;
+
+    const entries = docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        action: d.action,
+        actorUid: d.actorUid,
+        actorEmail: d.actorEmail || null,
+        details: d.details || {},
+        timestamp: d.timestamp?.toDate?.()?.toISOString() || null,
+      };
+    });
+
+    res.status(200).json({ entries, nextCursor: hasMore ? docs[docs.length - 1].id : null });
+  } catch (err) {
+    console.error('[adminListAuditLog] error:', err.message);
     res.status(500).json({ error: 'Internal error.' });
   }
 });
