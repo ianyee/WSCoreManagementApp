@@ -1,7 +1,7 @@
 {
   "projects": {
-    "default": "workscale-core",
-    "production": "workscale-core"
+    "default": "workscale-core-ph",
+    "production": "workscale-core-ph"
   }
 }
 

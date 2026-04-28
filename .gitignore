@@ -7,6 +7,7 @@ emulator-ui/node_modules/
 emulator-ui/dist/
 scripts/node_modules/
 scripts/serviceKeyAccount.json
+scripts/serviceKeyAccount_old.json
 .firebase/
 firebase-debug.log
 firestore-debug.log

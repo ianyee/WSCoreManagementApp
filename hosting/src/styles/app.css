@@ -414,12 +414,14 @@ html.dark .content-area { background: transparent; }
 .role-chip--editor     { background: rgba(59,130,246,0.12);  color: #1D4ED8; }
 .role-chip--viewer     { background: rgba(245,158,11,0.12);  color: #92400E; }
 .role-chip--employee   { background: rgba(236,72,153,0.12);  color: #9D174D; }
+.role-chip--pending    { background: rgba(245,158,11,0.12);  color: #B45309; }
 
 html.dark .role-chip--superadmin { background: rgba(139,92,246,0.20); color: #C4B5FD; }
 html.dark .role-chip--admin      { background: rgba(16,185,129,0.20); color: #6EE7B7; }
 html.dark .role-chip--user       { background: rgba(100,116,139,0.20); color: #94A3B8; }
 html.dark .role-chip--editor     { background: rgba(59,130,246,0.20);  color: #93C5FD; }
 html.dark .role-chip--viewer     { background: rgba(245,158,11,0.20);  color: #FCD34D; }
+html.dark .role-chip--pending    { background: rgba(245,158,11,0.20);  color: #FCD34D; }
 
 /* ─── Domain badge ─────────────────────────────────────────────────────────── */
 .domain-badge {
@@ -431,6 +433,108 @@ html.dark .role-chip--viewer     { background: rgba(245,158,11,0.20);  color: #F
   border: 1px solid var(--card-border);
   border-radius: 6px;
   padding: 2px 8px;
+}
+
+/* ─── Domain Builder ────────────────────────────────────────────────────────── */
+.domain-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.domain-entry {
+  border: 1.5px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px 8px;
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+html.dark .domain-entry { background: rgba(255,255,255,0.03); }
+
+.domain-entry__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.domain-entry__icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.domain-entry__domain-input {
+  flex: 1;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: .8rem;
+  padding: 6px 10px;
+}
+.domain-entry__remove {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  color: var(--text-muted);
+}
+.domain-entry__remove:hover { color: var(--danger); background: var(--danger-bg); }
+
+.domain-entry__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 20px;
+  border-left: 2px solid var(--card-border);
+  margin-left: 6px;
+}
+.domain-entry__fields:empty { display: none; }
+
+.domain-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.domain-field__key {
+  flex: 0 0 140px;
+  font-size: .8rem;
+  padding: 5px 8px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.domain-field__eq {
+  color: var(--text-muted);
+  font-size: .9rem;
+  flex-shrink: 0;
+  user-select: none;
+}
+.domain-field__value {
+  flex: 1;
+  font-size: .8rem;
+  padding: 5px 8px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.domain-field__remove {
+  flex-shrink: 0;
+  padding: 4px 6px;
+  color: var(--text-muted);
+}
+.domain-field__remove:hover { color: var(--danger); }
+
+.domain-entry__add-field {
+  align-self: flex-start;
+  font-size: .76rem;
+  padding: 3px 10px;
+  color: var(--text-secondary);
+  margin-left: 28px;
+}
+.domain-entry__add-field:hover { color: var(--primary); background: rgba(16,185,129,0.06); }
+
+.domain-builder__add-domain {
+  align-self: flex-start;
+  font-size: .78rem;
+  padding: 5px 12px;
+  color: var(--primary);
+  border: 1.5px dashed rgba(16,185,129,0.35);
+  border-radius: var(--radius-sm);
+}
+.domain-builder__add-domain:hover {
+  background: rgba(16,185,129,0.06);
+  border-color: var(--primary);
 }
 
 /* ─── Action buttons ────────────────────────────────────────────────────────── */

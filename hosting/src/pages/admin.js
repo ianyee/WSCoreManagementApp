@@ -84,11 +84,8 @@ export default async function renderAdmin(container) {
                   </select>
                 </div>
                 <div class="form-field form-field--full">
-                  <label class="form-label" for="new-domains">
-                    Domain permissions
-                    <span class="form-hint">JSON — e.g. {"hr.workscale.ph":{"role":"editor"}}</span>
-                  </label>
-                  <textarea id="new-domains" class="input input--textarea" placeholder='{"hr.workscale.ph":{"role":"editor"}}'></textarea>
+                  <label class="form-label">Domain permissions</label>
+                  <div id="new-domain-builder"></div>
                 </div>
                 <div class="form-field form-field--full">
                   <button type="submit" id="btn-create-user" class="btn btn--primary">
@@ -136,11 +133,8 @@ export default async function renderAdmin(container) {
             </select>
           </div>
           <div class="form-field mt-16">
-            <label class="form-label" for="modal-domains">
-              Domain permissions
-              <span class="form-hint">Valid JSON object</span>
-            </label>
-            <textarea id="modal-domains" class="input input--textarea" rows="6"></textarea>
+            <label class="form-label">Domain permissions</label>
+            <div id="modal-domain-builder"></div>
           </div>
         </div>
         <div class="modal-footer">
@@ -178,15 +172,7 @@ export default async function renderAdmin(container) {
     const password = document.getElementById('new-password').value;
     const displayName = document.getElementById('new-name').value.trim();
     const role = document.getElementById('new-role').value;
-    const domainsRaw = document.getElementById('new-domains').value.trim();
-
-    let domains = {};
-    if (domainsRaw) {
-      try { domains = JSON.parse(domainsRaw); } catch {
-        showToast('Domain permissions must be valid JSON.', 'error');
-        return;
-      }
-    }
+    const domains = readDomainBuilder(document.getElementById('new-domain-builder'));
 
     btn.disabled = true;
     btn.textContent = 'Creating…';
@@ -194,6 +180,7 @@ export default async function renderAdmin(container) {
       await adminCall('adminCreateUser', { email, password, displayName, role, domains });
       showToast(`User ${email} created.`, 'success');
       e.target.reset();
+      initDomainBuilder(document.getElementById('new-domain-builder'), {});
       await loadUsers();
     } catch (err) {
       showToast(err.message || 'Failed to create user.', 'error');
@@ -212,14 +199,7 @@ export default async function renderAdmin(container) {
   document.getElementById('btn-modal-save').addEventListener('click', async () => {
     const uid = document.getElementById('modal-uid').value;
     const role = document.getElementById('modal-role').value;
-    const domainsRaw = document.getElementById('modal-domains').value.trim();
-    let domains = {};
-    if (domainsRaw) {
-      try { domains = JSON.parse(domainsRaw); } catch {
-        showToast('Domain permissions must be valid JSON.', 'error');
-        return;
-      }
-    }
+    const domains = readDomainBuilder(document.getElementById('modal-domain-builder'));
     const btn = document.getElementById('btn-modal-save');
     btn.disabled = true;
     btn.textContent = 'Saving…';
@@ -236,6 +216,7 @@ export default async function renderAdmin(container) {
     }
   });
 
+  initDomainBuilder(document.getElementById('new-domain-builder'), {});
   await loadUsers();
 }
 
@@ -267,16 +248,16 @@ async function loadUsers() {
             </div>
           </div>
         </td>
-        <td><span class="role-chip role-chip--${esc(u.role?.toLowerCase() || 'user')}">${esc(u.role)}</span></td>
+        <td><span class="role-chip role-chip--${esc(u.role?.toLowerCase() || 'user')}">${esc(u.role)}</span>${u.ssoAuto ? ' <span class="role-chip role-chip--pending">Pending</span>' : ''}</td>
         <td class="text-muted">${Object.keys(u.domains || {}).length} domain(s)</td>
         <td class="text-muted text-sm">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-PH') : '—'}</td>
         <td>
           <div class="action-btns">
-            <button class="btn btn--ghost btn--sm btn-edit-perms"
+            <button class="btn ${u.ssoAuto ? 'btn--primary' : 'btn--ghost'} btn--sm btn-edit-perms"
               data-uid="${esc(u.uid)}"
               data-role="${esc(u.role)}"
               data-domains="${esc(JSON.stringify(u.domains || {}))}">
-              Edit
+              ${u.ssoAuto ? 'Assign Role' : 'Edit'}
             </button>
             ${u.uid !== state.sessionUser.uid ? `
             <button class="btn btn--danger btn--sm btn-delete-user" data-uid="${esc(u.uid)}" data-email="${esc(u.email)}">
@@ -309,8 +290,9 @@ async function loadUsers() {
       btn.addEventListener('click', () => {
         document.getElementById('modal-uid').value = btn.dataset.uid;
         document.getElementById('modal-role').value = btn.dataset.role;
-        document.getElementById('modal-domains').value = JSON.stringify(
-          JSON.parse(btn.dataset.domains || '{}'), null, 2
+        initDomainBuilder(
+          document.getElementById('modal-domain-builder'),
+          JSON.parse(btn.dataset.domains || '{}')
         );
         openModal();
       });
@@ -397,4 +379,100 @@ function avatarColor(name = '') {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+// ─── Domain Builder ───────────────────────────────────────────────────────────
+function buildFieldRow(key = '', value = '') {
+  const row = document.createElement('div');
+  row.className = 'domain-field';
+  const keyInput = document.createElement('input');
+  keyInput.type = 'text';
+  keyInput.className = 'input domain-field__key';
+  keyInput.placeholder = 'field  (e.g. role)';
+  keyInput.value = key;
+  const eq = document.createElement('span');
+  eq.className = 'domain-field__eq';
+  eq.textContent = '=';
+  const valInput = document.createElement('input');
+  valInput.type = 'text';
+  valInput.className = 'input domain-field__value';
+  valInput.placeholder = 'value  (e.g. editor)';
+  valInput.value = value;
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn btn--ghost btn--sm domain-field__remove';
+  removeBtn.setAttribute('aria-label', 'Remove field');
+  removeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  removeBtn.addEventListener('click', () => row.remove());
+  row.append(keyInput, eq, valInput, removeBtn);
+  return row;
+}
+
+function buildDomainEntry(domain = '', fields = {}) {
+  const entry = document.createElement('div');
+  entry.className = 'domain-entry';
+
+  // Header: globe icon + domain input + remove button
+  const header = document.createElement('div');
+  header.className = 'domain-entry__header';
+  header.innerHTML = `<svg class="domain-entry__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+  const domainInput = document.createElement('input');
+  domainInput.type = 'text';
+  domainInput.className = 'input domain-entry__domain-input';
+  domainInput.placeholder = 'e.g. hr.workscale.ph';
+  domainInput.value = domain;
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn btn--ghost btn--sm domain-entry__remove';
+  removeBtn.setAttribute('aria-label', 'Remove domain');
+  removeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  removeBtn.addEventListener('click', () => entry.remove());
+  header.append(domainInput, removeBtn);
+
+  // Fields container
+  const fieldsWrap = document.createElement('div');
+  fieldsWrap.className = 'domain-entry__fields';
+  for (const [k, v] of Object.entries(fields)) {
+    fieldsWrap.appendChild(buildFieldRow(k, typeof v === 'string' ? v : JSON.stringify(v)));
+  }
+
+  // Add field button
+  const addFieldBtn = document.createElement('button');
+  addFieldBtn.type = 'button';
+  addFieldBtn.className = 'btn btn--ghost btn--sm domain-entry__add-field';
+  addFieldBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add field`;
+  addFieldBtn.addEventListener('click', () => fieldsWrap.appendChild(buildFieldRow()));
+
+  entry.append(header, fieldsWrap, addFieldBtn);
+  return entry;
+}
+
+function initDomainBuilder(container, initialDomains = {}) {
+  container.innerHTML = '';
+  container.className = 'domain-builder';
+  for (const [domain, fields] of Object.entries(initialDomains)) {
+    container.appendChild(buildDomainEntry(domain, fields && typeof fields === 'object' ? fields : {}));
+  }
+  const addDomainBtn = document.createElement('button');
+  addDomainBtn.type = 'button';
+  addDomainBtn.className = 'btn btn--ghost btn--sm domain-builder__add-domain';
+  addDomainBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add domain`;
+  addDomainBtn.addEventListener('click', () => container.insertBefore(buildDomainEntry(), addDomainBtn));
+  container.appendChild(addDomainBtn);
+}
+
+function readDomainBuilder(container) {
+  const domains = {};
+  container.querySelectorAll('.domain-entry').forEach((entry) => {
+    const domain = entry.querySelector('.domain-entry__domain-input')?.value.trim();
+    if (!domain) return;
+    const fields = {};
+    entry.querySelectorAll('.domain-field').forEach((row) => {
+      const key = row.querySelector('.domain-field__key')?.value.trim();
+      const val = row.querySelector('.domain-field__value')?.value.trim();
+      if (key) fields[key] = val;
+    });
+    domains[domain] = fields;
+  });
+  return domains;
 }

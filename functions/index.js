@@ -63,6 +63,9 @@ async function assertBearerSuperAdmin(req, res) {
 
 // ─── Helper: verify App Check token ──────────────────────────────────────────
 async function verifyAppCheck(req, res) {
+  // Skip enforcement in the local Functions emulator
+  if (process.env.FUNCTIONS_EMULATOR === 'true') return true;
+
   const token = req.headers['x-firebase-appcheck'];
   if (!token) {
     res.status(401).json({ error: 'App Check token missing.' });
@@ -125,13 +128,42 @@ exports.setCustomClaims = onRequest(async (req, res) => {
   const uid = decoded.uid;
 
   try {
-    const permSnap = await db.doc(`userPermissions/${uid}`).get();
+    const [permSnap, userSnap] = await Promise.all([
+      db.doc(`userPermissions/${uid}`).get(),
+      db.doc(`users/${uid}`).get(),
+    ]);
+
+    // Always update lastLoginAt for existing users
+    if (userSnap.exists) {
+      await db.doc(`users/${uid}`).update({ lastLoginAt: FieldValue.serverTimestamp() });
+    }
+
     if (!permSnap.exists) {
+      // First SSO login — auto-provision Firestore records so user appears in admin panel
+      const authUser = await getAuth().getUser(uid);
+      const now = FieldValue.serverTimestamp();
+      const defaultPermData = { uid, role: 'User', domains: {}, updatedAt: now, updatedBy: 'sso-auto' };
+      const writes = [
+        getAuth().setCustomUserClaims(uid, { role: 'User', domains: {}, sso: true }),
+        db.doc(`userPermissions/${uid}`).set(defaultPermData),
+      ];
+      if (!userSnap.exists) {
+        writes.push(db.doc(`users/${uid}`).set({
+          uid,
+          email: (authUser.email || '').toLowerCase(),
+          displayName: authUser.displayName || '',
+          photoURL: authUser.photoURL || '',
+          createdAt: now,
+          createdBy: 'sso-auto',
+          lastLoginAt: now,
+        }));
+      }
+      await Promise.all(writes);
       const defaultClaims = { role: 'User', domains: {}, sso: true };
-      await getAuth().setCustomUserClaims(uid, defaultClaims);
       res.status(200).json({ status: 'ok', claims: defaultClaims });
       return;
     }
+
     const claims = buildClaims(permSnap.data());
     await getAuth().setCustomUserClaims(uid, claims);
     res.status(200).json({ status: 'ok', claims });
@@ -340,7 +372,7 @@ exports.adminListUsers = onRequest(async (req, res) => {
     permsSnap.docs.forEach((d) => { permsMap[d.id] = d.data(); });
     const users = usersSnap.docs.map((d) => {
       const u = d.data();
-      return { uid: u.uid, email: u.email, displayName: u.displayName, role: permsMap[u.uid]?.role || 'User', domains: permsMap[u.uid]?.domains || {}, createdAt: u.createdAt?.toDate?.()?.toISOString() || null, lastLoginAt: u.lastLoginAt?.toDate?.()?.toISOString() || null };
+      return { uid: u.uid, email: u.email, displayName: u.displayName, role: permsMap[u.uid]?.role || 'User', domains: permsMap[u.uid]?.domains || {}, ssoAuto: permsMap[u.uid]?.updatedBy === 'sso-auto', createdAt: u.createdAt?.toDate?.()?.toISOString() || null, lastLoginAt: u.lastLoginAt?.toDate?.()?.toISOString() || null };
     });
     res.status(200).json({ users });
   } catch (err) {

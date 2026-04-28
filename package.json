@@ -7,7 +7,7 @@
     "audit": "npm audit && npm audit --prefix functions && npm audit --prefix hosting && npm audit --prefix emulator-ui && npm audit --prefix scripts",
     "audit:fix": "npm audit fix && npm audit fix --prefix functions && npm audit fix --prefix hosting && npm audit fix --prefix emulator-ui && npm audit fix --prefix scripts",
     "dev": "concurrently \"npm run emulators\" \"npm run hosting:dev\" \"npm run viewer:dev\"",
-    "emulators": "firebase emulators:start --project workscale-core",
+    "emulators": "firebase emulators:start --project workscale-core-ph",
     "hosting:dev": "npm run dev --prefix hosting",
     "hosting:build": "npm run build --prefix hosting",
     "viewer:dev": "npm run dev --prefix emulator-ui",
