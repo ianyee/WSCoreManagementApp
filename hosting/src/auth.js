@@ -73,26 +73,32 @@ async function finalizeLogin(firebaseUser) {
   return freshToken;
 }
 
+// Flag set before sign-in so onAuthStateChanged knows to call finalizeLogin.
+// This avoids calling expensive cloud functions on every page-load/token-refresh.
+let _pendingFinalize = false;
+
 // ─── Sign In: Email / Password ────────────────────────────────────────────────
 export async function signInWithEmail(email, password) {
-  const result = await signInWithEmailAndPassword(auth, email, password);
-  await finalizeLogin(result.user);
+  _pendingFinalize = true;
+  await signInWithEmailAndPassword(auth, email, password);
+  // finalizeLogin (setCustomClaims + mintSessionCookie) is called in onAuthStateChanged
 }
 
 // ─── Sign In: Microsoft SSO ──────────────────────────────────────────────────
 export async function signInWithMicrosoft() {
+  _pendingFinalize = true;
   const result = await signInWithPopup(auth, microsoftProvider);
   // Guard: reject accounts that are not from the @workscale.ph domain.
-  // (Azure tenant restriction above is the primary gate; this is a safety net.)
   const email = result.user.email || '';
   const allowed = import.meta.env.VITE_MICROSOFT_TENANT_ID
     ? email.endsWith('@workscale.ph')
     : true;  // dev/emulator: allow any account
   if (!allowed) {
+    _pendingFinalize = false;
     await firebaseSignOut(auth);
     throw Object.assign(new Error('Only @workscale.ph accounts are allowed.'), { code: 'auth/unauthorized-domain' });
   }
-  await finalizeLogin(result.user);
+  // finalizeLogin is called in onAuthStateChanged
 }
 
 // ─── Password Reset ──────────────────────────────────────────────────────────
@@ -111,19 +117,74 @@ export async function signOut() {
   await firebaseSignOut(auth);
 }
 
+// ─── Safe redirect URL helper ────────────────────────────────────────────────
+// Returns the ?redirect= param value only if it points to a *.workscale.ph domain.
+export function getSafeRedirectUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('redirect');
+    if (!raw) return null;
+    const url = new URL(raw);
+    if (!url.hostname.endsWith('.workscale.ph')) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Auth Lifecycle ──────────────────────────────────────────────────────────
 export function initAuth() {
   onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser) {
+      // Consume the flag atomically so concurrent firings don't double-finalize.
+      const isFreshSignIn = _pendingFinalize;
+      _pendingFinalize = false;
+
       try {
+        const redirectUrl = getSafeRedirectUrl();
+
+        // ── Child-app SSO redirect flow ──────────────────────────────────────
+        // Always finalize here (mint session cookie) — this is the fix for the
+        // race condition where onAuthStateChanged fired before finalizeLogin
+        // completed inside signInWithEmail / signInWithMicrosoft.
+        if (redirectUrl) {
+          const loopKey = `redirected_to:${redirectUrl}`;
+          if (sessionStorage.getItem(loopKey)) {
+            // We already redirected once and came back — child app has a
+            // separate issue (e.g. CSP, missing permission). Don't sign out;
+            // just show an error so the user can retry or contact support.
+            sessionStorage.removeItem(loopKey);
+            showToast('Could not complete sign-in with the requested app. Contact your administrator.', 'error');
+            return;
+          }
+          // Mint the session cookie before redirecting.
+          await finalizeLogin(firebaseUser);
+          sessionStorage.setItem(loopKey, '1');
+          window.location.href = redirectUrl;
+          return;
+        }
+
+        // ── Portal-direct flow: SuperAdmin-only ──────────────────────────────
+        // Only call finalizeLogin (cloud functions) on a fresh sign-in to avoid
+        // hitting cloud functions on every page refresh.
+        if (isFreshSignIn) {
+          await finalizeLogin(firebaseUser);
+        }
+
+        // getIdTokenResult() returns the cached (possibly just-refreshed) token.
         const token = await firebaseUser.getIdTokenResult();
         const role = token.claims.role || 'User';
 
-        // This portal is SuperAdmin-only. Sign out anyone else immediately.
         if (role !== 'SuperAdmin') {
-          showToast('Access denied. This portal is for SuperAdmins only.', 'error');
-          await signOut().catch(() => {});
-          // onAuthStateChanged(null) below will redirect to /login
+          // Non-SuperAdmins land on the /apps page to see their accessible domains.
+          state.sessionUser = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName || firebaseUser.email,
+            role,
+            domains: token.claims.domains || {},
+          };
+          router.navigate('/apps');
           return;
         }
 
@@ -138,7 +199,7 @@ export function initAuth() {
         router.navigate(state.lastRoute || '/dashboard');
       } catch (err) {
         console.error('[auth] onAuthStateChanged error:', err);
-        showToast('Failed to load session. Please sign in again.', 'error');
+        showToast(err.message || 'Failed to load session. Please sign in again.', 'error');
         await firebaseSignOut(auth);
       }
     } else {

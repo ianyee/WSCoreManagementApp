@@ -149,6 +149,12 @@ function renderSidebar(user) {
               <span class="nav-label">Dashboard</span>
             </a>
           </li>
+          <li>
+            <a class="nav-item" data-nav="/apps" data-tooltip="Apps">
+              <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+              <span class="nav-label">Apps</span>
+            </a>
+          </li>
           ${isSuperAdmin ? `
           <li class="nav-section-label">Administration</li>
           <li>

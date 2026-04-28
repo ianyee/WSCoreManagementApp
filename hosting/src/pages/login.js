@@ -1,8 +1,17 @@
-import { signInWithEmail, signInWithMicrosoft, resetPassword } from '../auth.js';
+import { signInWithEmail, signInWithMicrosoft, resetPassword, getSafeRedirectUrl } from '../auth.js';
 import { showToast, esc } from '../ui.js';
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
 export default function renderLogin(container) {
+  const redirectUrl = getSafeRedirectUrl();
+  const redirectHost = redirectUrl ? new URL(redirectUrl).hostname : null;
+
+  const subtitle = redirectHost
+    ? `Sign in to continue to <strong>${esc(redirectHost)}</strong>`
+    : 'Sign in to manage users, roles, and SSO access.';
+
+  const brandLabel = redirectHost ? 'Single Sign-On' : 'User Management';
+
   container.innerHTML = `
     <div class="login-wrapper">
       <div class="login-card">
@@ -11,11 +20,11 @@ export default function renderLogin(container) {
           <img src="/favicon.svg" alt="Workscale logo" class="login-logo" />
           <div class="login-brand-text">
             <span class="login-title">Workscale</span>
-            <span class="login-subtitle-brand">User Management</span>
+            <span class="login-subtitle-brand">${esc(brandLabel)}</span>
           </div>
         </div>
 
-        <p class="login-subtitle">Sign in to manage users, roles, and SSO access.</p>
+        <p class="login-subtitle">${subtitle}</p>
 
         <form id="form-email-login" class="login-form" novalidate>
           <div class="form-field">

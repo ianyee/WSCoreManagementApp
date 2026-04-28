@@ -273,6 +273,99 @@ VITE_CORE_LOGIN_URL=http://localhost:3000
 
 ---
 
+## §12 — Content Security Policy (CSP)
+
+Your child app's `firebase.json` must explicitly allow the resources used in the auth flow. Without this, reCAPTCHA and core's functions will be blocked by the browser.
+
+```json
+{
+  "hosting": {
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net https://asia-southeast1-workscale-core-ph.cloudfunctions.net https://firebaseappcheck.googleapis.com; frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://core.workscale.ph https://www.google.com https://www.recaptcha.net https://recaptcha.google.com"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Key additions vs a plain Firebase app:**
+
+| Directive | What to add | Why |
+|---|---|---|
+| `script-src` | `https://www.google.com` `https://www.recaptcha.net` | reCAPTCHA v3 script |
+| `connect-src` | `https://asia-southeast1-workscale-core-ph.cloudfunctions.net` | `verifySessionCookie` call |
+| `connect-src` | `https://firebaseappcheck.googleapis.com` | App Check token exchange |
+| `frame-src` | `https://core.workscale.ph` | Auth popup/redirect via core's auth handler |
+| `frame-src` | `https://www.recaptcha.net` `https://recaptcha.google.com` | reCAPTCHA iframe |
+
+---
+
+## §13 — Redirect Loop Prevention
+
+When `requireAuth()` fails, the child app redirects to core's login with a `?redirect=` param.
+Core logs the user in, then redirects back. If the child app's `requireAuth()` still fails
+(e.g. CSP blocks `verifySessionCookie`, or user has no domain access), an infinite loop occurs.
+
+**Core's loop prevention (built in):** Core uses `sessionStorage` to detect if it already redirected
+to a given URL. On a second bounce to the same URL, it stops, shows an error, and signs the user out.
+
+**Child app's responsibility — guard against the loop on your side too:**
+
+```js
+export async function requireAuth() {
+  // Detect if we just came back from core login (prevents looping if verify still fails)
+  const justRedirected = sessionStorage.getItem('core_redirected');
+  if (justRedirected) {
+    sessionStorage.removeItem('core_redirected');
+    // verify once more — if it fails, show an error instead of redirecting again
+    try {
+      const res = await fetch(VERIFY_URL, { credentials: 'include' });
+      if (!res.ok) throw new Error();
+      const claims = await res.json();
+      const access = claims.domains?.[THIS_DOMAIN];
+      if (!access) {
+        document.body.innerHTML = '<p>You do not have access to this application. Contact your administrator.</p>';
+        return null;
+      }
+      return { uid: claims.uid, email: claims.email, role: access.role, claims };
+    } catch {
+      document.body.innerHTML = '<p>Authentication failed. Please try again later.</p>';
+      return null;
+    }
+  }
+
+  try {
+    const res = await fetch(VERIFY_URL, { credentials: 'include' });
+    if (!res.ok) throw new Error('no session');
+    const claims = await res.json();
+    const access = claims.domains?.[THIS_DOMAIN];
+    if (!access) throw new Error('no domain access');
+    return { uid: claims.uid, email: claims.email, role: access.role, claims };
+  } catch {
+    sessionStorage.setItem('core_redirected', '1');
+    window.location.href = `${LOGIN_URL}?redirect=${encodeURIComponent(window.location.href)}`;
+  }
+}
+```
+
+**Common causes of infinite redirect loops:**
+
+| Cause | Fix |
+|---|---|
+| CSP blocks `verifySessionCookie` fetch | Add `https://asia-southeast1-workscale-core-ph.cloudfunctions.net` to `connect-src` |
+| User has no `domains['orbit.workscale.ph']` entry | SuperAdmin must grant domain access from core admin UI |
+| `credentials: 'include'` missing | Session cookie won't be sent — add it to every `fetch` call to core |
+| App Check blocking `verifySessionCookie` | It has no App Check — check your function code for accidental App Check middleware |
+
+---
+
 ## Common Pitfalls
 
 | Problem | Cause | Fix |
@@ -282,6 +375,8 @@ VITE_CORE_LOGIN_URL=http://localhost:3000
 | Claims show empty `domains` | User not yet granted access in core admin UI | SuperAdmin must add `orbit.workscale.ph` key in user's domain builder |
 | `verifySessionCookie` fails cross-project | Admin SDK initialized with wrong project credentials | Call core's `/verifySessionCookie` HTTP endpoint instead |
 | Works on `localhost` but not on `orbit.workscale.ph` | Domain not in core's Authorized Domains | See first row above |
+| Infinite redirect loop between child and core | CSP blocking `verifySessionCookie` or no domain access | See §13 |
+| reCAPTCHA blocked by CSP | `script-src` missing `https://www.google.com` | See §12 |
 
 ---
 

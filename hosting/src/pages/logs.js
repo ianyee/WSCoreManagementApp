@@ -120,6 +120,8 @@ export default async function renderLogs(container) {
             <p class="page-heading__sub">Admin actions on user accounts and permissions — retained for 90 days.</p>
           </div>
 
+          <div id="client-errors-section"></div>
+
           <div class="card">
             <div class="card-header" style="flex-wrap:wrap;gap:12px">
               <h2 class="card-title">Recent Activity</h2>
@@ -224,6 +226,36 @@ export default async function renderLogs(container) {
   });
 
   container.querySelector('#btn-load-more')?.addEventListener('click', () => loadPage(nextCursor));
+
+  // ─── Client-side error log ─────────────────────────────────────────────────
+  const clientErrorsEl = container.querySelector('#client-errors-section');
+  if (state.clientErrors.length > 0 && clientErrorsEl) {
+    const rows = state.clientErrors.slice().reverse().map((e) => `
+      <tr>
+        <td class="text-sm text-muted" style="white-space:nowrap">${formatTs(e.ts)}</td>
+        <td><span class="log-badge ${e.type === 'error' ? 'log-badge--red' : 'log-badge--orange'}">${esc(e.type)}</span></td>
+        <td class="text-sm" colspan="2">${esc(e.message)}</td>
+      </tr>`).join('');
+    clientErrorsEl.innerHTML = `
+      <div class="card" style="margin-bottom:16px;border-left:4px solid var(--danger)">
+        <div class="card-header">
+          <h2 class="card-title" style="color:var(--danger)">Client-side Errors (this session)</h2>
+          <button class="btn btn--outline btn--sm" id="btn-clear-client-errors">Clear</button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Time</th><th>Type</th><th colspan="2">Message</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    clientErrorsEl.querySelector('#btn-clear-client-errors')?.addEventListener('click', () => {
+      state.clientErrors = [];
+      clientErrorsEl.innerHTML = '';
+    });
+  }
 
   await loadPage();
 }

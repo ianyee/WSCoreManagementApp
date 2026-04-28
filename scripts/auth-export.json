@@ -1,0 +1,11 @@
+{"users": [
+{
+  "localId": "auUkcn9E4Qd412bKBBB5YrQLgME2",
+  "email": "admin@workscale.ph",
+  "emailVerified": false,
+  "displayName": "Admin",
+  "lastSignedInAt": "1777348818192",
+  "createdAt": "1777341402300",
+  "customAttributes": "{\"role\":\"SuperAdmin\",\"domains\":{},\"sso\":true}",
+  "providerUserInfo": []
+}]}

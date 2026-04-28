@@ -10,8 +10,13 @@ const routes = [
     loader: () => import('./pages/login.js'),
   },
   {
+    path: '/apps',
+    public: true, // rendered for any authenticated user (SuperAdmin or not)
+    loader: () => import('./pages/apps.js'),
+  },
+  {
     path: '/dashboard',
-    requiredRole: 'SuperAdmin', // this portal is SuperAdmin-only
+    requiredRole: 'SuperAdmin',
     loader: () => import('./pages/dashboard.js'),
   },
   {
@@ -36,7 +41,12 @@ async function render(path) {
   const route = findRoute(path);
 
   if (!route) {
-    navigate('/dashboard');
+    // Non-SuperAdmins trying unknown routes → apps page
+    if (state.sessionUser && state.sessionUser.role !== 'SuperAdmin') {
+      navigate('/apps');
+    } else {
+      navigate('/dashboard');
+    }
     return;
   }
 
@@ -47,20 +57,22 @@ async function render(path) {
     return;
   }
 
-  // Guard: role check
+  // Guard: role check — non-SuperAdmins can only access /apps and /login
   if (route.requiredRole && state.sessionUser?.role !== route.requiredRole) {
-    navigate('/dashboard');
+    navigate('/apps');
     return;
   }
 
-  // Already on login page but authenticated → redirect
-  if (route.public && state.sessionUser) {
-    navigate('/dashboard');
+  // Already on login page but authenticated → send to /apps or /dashboard
+  if (route.public && state.sessionUser && path !== '/apps') {
+    navigate(state.sessionUser.role === 'SuperAdmin' ? '/dashboard' : '/apps');
     return;
   }
 
   state.lastRoute = path;
-  history.pushState({}, '', path);
+  // Preserve query string when staying on the same path (e.g. /login?redirect=...)
+  const targetUrl = path === window.location.pathname ? window.location.href : path;
+  history.pushState({}, '', targetUrl);
 
   const mod = await route.loader();
   const container = appEl();

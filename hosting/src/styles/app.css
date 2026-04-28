@@ -777,6 +777,13 @@ html.dark .login-card { background: rgba(15,23,42,0.95); border-color: #1E293B; 
 .toast--error   { border-left-color: var(--danger); }
 .toast--warning { border-left-color: var(--warning); }
 .toast--info    { border-left-color: var(--info); }
+.toast { display: flex; align-items: flex-start; gap: 10px; }
+.toast-close {
+  background: none; border: none; color: #94A3B8;
+  cursor: pointer; font-size: 1.1rem; line-height: 1;
+  padding: 0; margin-left: auto; flex-shrink: 0;
+}
+.toast-close:hover { color: #F1F5F9; }
 
 /* ─── Audit log action badges ──────────────────────────────────────────────── */
 .log-badge {
@@ -788,14 +795,16 @@ html.dark .login-card { background: rgba(15,23,42,0.95); border-color: #1E293B; 
   font-weight: 600;
   white-space: nowrap;
 }
-.log-badge--green { background: rgba(16,185,129,0.12); color: #065F46; }
-.log-badge--red   { background: rgba(239,68,68,0.12);  color: #991B1B; }
-.log-badge--blue  { background: rgba(59,130,246,0.12); color: #1D4ED8; }
-.log-badge--grey  { background: rgba(100,116,139,0.12);color: #475569; }
-html.dark .log-badge--green { background: rgba(16,185,129,0.20); color: #6EE7B7; }
-html.dark .log-badge--red   { background: rgba(239,68,68,0.20);  color: #FCA5A5; }
-html.dark .log-badge--blue  { background: rgba(59,130,246,0.20); color: #93C5FD; }
-html.dark .log-badge--grey  { background: rgba(100,116,139,0.20);color: #94A3B8; }
+.log-badge--green  { background: rgba(16,185,129,0.12); color: #065F46; }
+.log-badge--red    { background: rgba(239,68,68,0.12);  color: #991B1B; }
+.log-badge--blue   { background: rgba(59,130,246,0.12); color: #1D4ED8; }
+.log-badge--grey   { background: rgba(100,116,139,0.12);color: #475569; }
+.log-badge--orange { background: rgba(249,115,22,0.12); color: #9A3412; }
+html.dark .log-badge--green  { background: rgba(16,185,129,0.20); color: #6EE7B7; }
+html.dark .log-badge--red    { background: rgba(239,68,68,0.20);  color: #FCA5A5; }
+html.dark .log-badge--blue   { background: rgba(59,130,246,0.20); color: #93C5FD; }
+html.dark .log-badge--grey   { background: rgba(100,116,139,0.20);color: #94A3B8; }
+html.dark .log-badge--orange { background: rgba(249,115,22,0.20); color: #FDBA74; }
 
 /* ─── Card footer ──────────────────────────────────────────────────────────── */
 .card-footer {

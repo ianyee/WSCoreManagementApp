@@ -1,4 +1,5 @@
 // ─── UI Utilities ─────────────────────────────────────────────────────────────
+import { state } from './state.js';
 
 /**
  * Escape HTML entities to prevent XSS.
@@ -30,10 +31,16 @@ export function safeUrl(url) {
 
 /**
  * Show a transient toast notification.
+ * Errors and warnings are click-to-dismiss and recorded in state.clientErrors.
  * @param {string} message
  * @param {'info'|'success'|'error'|'warning'} type
  */
 export function showToast(message, type = 'info') {
+  // Record errors and warnings to the in-session log
+  if (type === 'error' || type === 'warning') {
+    state.clientErrors.push({ ts: new Date().toISOString(), type, message });
+  }
+
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -43,15 +50,25 @@ export function showToast(message, type = 'info') {
 
   const toast = document.createElement('div');
   toast.className = `toast toast--${type}`;
-  toast.textContent = message;
+
+  const isPersistent = type === 'error' || type === 'warning';
+
+  if (isPersistent) {
+    toast.innerHTML = `<span>${esc(message)}</span><button class="toast-close" aria-label="Dismiss">&times;</button>`;
+    toast.querySelector('.toast-close').addEventListener('click', () => {
+      toast.classList.remove('toast--visible');
+      toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    });
+  } else {
+    toast.textContent = message;
+    setTimeout(() => {
+      toast.classList.remove('toast--visible');
+      toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    }, 3500);
+  }
+
   container.appendChild(toast);
-
   requestAnimationFrame(() => toast.classList.add('toast--visible'));
-
-  setTimeout(() => {
-    toast.classList.remove('toast--visible');
-    toast.addEventListener('transitionend', () => toast.remove());
-  }, 3500);
 }
 
 /**

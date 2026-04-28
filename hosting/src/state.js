@@ -17,4 +17,11 @@ export const state = {
 
   /** Last visited route — used to redirect after login. */
   lastRoute: null,
+
+  /**
+   * In-session client-side error/warning log. Populated by showToast() for
+   * 'error' and 'warning' types. Shown on the Logs page for review.
+   * @type {{ ts: string, type: string, message: string }[]}
+   */
+  clientErrors: [],
 };
