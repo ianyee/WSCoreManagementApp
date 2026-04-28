@@ -44,6 +44,14 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
+    // ─── auditLog/{entry} ────────────────────────────────────────────────────
+    // Written by Cloud Functions (Admin SDK) only. SuperAdmin may read.
+    // TTL-managed: documents auto-expire after 90 days via expireAt field.
+    match /auditLog/{entry} {
+      allow read:  if isSuperAdmin();
+      allow write: if false;
+    }
+
     // ─── Deny everything else ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -77,6 +77,27 @@ async function verifyAppCheck(req, res) {
   }
 }
 
+// ─── Audit log ───────────────────────────────────────────────────────────────
+// Skipped in emulator (FUNCTIONS_EMULATOR=true) to keep dev clean.
+// Each entry has an expireAt field — configure a TTL policy in Firestore
+// Console → Databases → (default) → TTL → field: expireAt, collection: auditLog
+const IS_EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
+const AUDIT_TTL_DAYS = 90;
+
+async function writeAuditLog(action, actor, details = {}) {
+  if (IS_EMULATOR) return; // skip in local dev
+  const expireAt = new Date();
+  expireAt.setDate(expireAt.getDate() + AUDIT_TTL_DAYS);
+  await db.collection('auditLog').add({
+    action,
+    actorUid: actor.uid,
+    actorEmail: actor.email || null,
+    details,
+    timestamp: FieldValue.serverTimestamp(),
+    expireAt,
+  }).catch((err) => console.error('[auditLog] write failed:', err.message));
+}
+
 // ─── Allowed roles ───────────────────────────────────────────────────────────
 const ALLOWED_ROLES = ['SuperAdmin', 'Admin', 'User'];
 
@@ -223,6 +244,7 @@ exports.adminSetUserPermissions = onRequest(async (req, res) => {
     const permData = { uid, role, domains: domains || {}, updatedAt: FieldValue.serverTimestamp(), updatedBy: decoded.uid };
     await db.doc(`userPermissions/${uid}`).set(permData, { merge: true });
     await getAuth().setCustomUserClaims(uid, buildClaims(permData));
+    await writeAuditLog('setUserPermissions', decoded, { targetUid: uid, role, domains: domains || {} });
     res.status(200).json({ status: 'ok' });
   } catch (err) {
     console.error('[adminSetUserPermissions] error:', err.message);
@@ -254,6 +276,7 @@ exports.adminCreateUser = onRequest(async (req, res) => {
     const permData = { uid, role: safeRole, domains: domains || {}, updatedAt: now, updatedBy: decoded.uid };
     await db.doc(`userPermissions/${uid}`).set(permData);
     await getAuth().setCustomUserClaims(uid, buildClaims(permData));
+    await writeAuditLog('createUser', decoded, { targetUid: uid, email: email.toLowerCase(), role: safeRole });
     res.status(200).json({ status: 'ok', uid });
   } catch (err) {
     console.error('[adminCreateUser] error:', err.message);
@@ -277,7 +300,10 @@ exports.adminDeleteUser = onRequest(async (req, res) => {
   if (uid === decoded.uid) { res.status(400).json({ error: 'Cannot delete yourself.' }); return; }
 
   try {
+    // Capture email before deleting for audit trail
+    const targetUser = await getAuth().getUser(uid).catch(() => null);
     await Promise.all([getAuth().deleteUser(uid), db.doc(`users/${uid}`).delete(), db.doc(`userPermissions/${uid}`).delete()]);
+    await writeAuditLog('deleteUser', decoded, { targetUid: uid, email: targetUser?.email || null });
     res.status(200).json({ status: 'ok' });
   } catch (err) {
     console.error('[adminDeleteUser] error:', err.message);
