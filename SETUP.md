@@ -80,19 +80,21 @@
 Edit `hosting/.env.local` with all real values:
 
 ```env
-VITE_FIREBASE_API_KEY=AIzaSyA44ZNzWNIQtSVMdiVsEzbjQseTQoOfkUg
-VITE_FIREBASE_AUTH_DOMAIN=workscale-core.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=workscale-core
-VITE_FIREBASE_STORAGE_BUCKET=workscale-core.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=3041016219
-VITE_FIREBASE_APP_ID=1:3041016219:web:36c777d16c2f2a11e7893e
+VITE_FIREBASE_API_KEY=<your-firebase-api-key>
+VITE_FIREBASE_AUTH_DOMAIN=<project-id>.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=<project-id>
+VITE_FIREBASE_STORAGE_BUCKET=<project-id>.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=<sender-id>
+VITE_FIREBASE_APP_ID=<app-id>
 
-VITE_CREATE_SESSION_URL=https://asia-southeast1-workscale-core.cloudfunctions.net/createSessionCookie
-VITE_REVOKE_SESSION_URL=https://asia-southeast1-workscale-core.cloudfunctions.net/revokeSession
+VITE_CREATE_SESSION_URL=https://asia-southeast1-<project-id>.cloudfunctions.net/createSessionCookie
+VITE_REVOKE_SESSION_URL=https://asia-southeast1-<project-id>.cloudfunctions.net/revokeSession
 
 # From §2a — Directory (tenant) ID
 VITE_MICROSOFT_TENANT_ID=<paste-directory-tenant-id-here>
 ```
+
+> Find these values in Firebase Console → Project Settings → Your apps → Web app config.
 
 ---
 

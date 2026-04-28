@@ -1,4 +1,4 @@
-import { auth, functions } from './firebase.js';
+import { auth, getAppCheckHeader } from './firebase.js';
 import {
   OAuthProvider,
   signInWithPopup,
@@ -7,7 +7,6 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
 import { state } from './state.js';
 import { router } from './router.js';
 import { showToast } from './ui.js';
@@ -15,14 +14,29 @@ import { showToast } from './ui.js';
 // ─── Microsoft OAuth Provider ────────────────────────────────────────────────
 const microsoftProvider = new OAuthProvider('microsoft.com');
 microsoftProvider.setCustomParameters({
-  // Locks sign-in to the workscale.ph Azure AD tenant only.
-  // Users from other organisations/personal accounts will be rejected by Azure.
   tenant: import.meta.env.VITE_MICROSOFT_TENANT_ID || 'common',
   prompt: 'select_account',
 });
 
-// Callable function refs
-const setCustomClaimsFn = httpsCallable(functions, 'setCustomClaims');
+// ─── Helper: call a function endpoint with Bearer token ──────────────────────
+const FUNCTIONS_BASE = import.meta.env.VITE_FUNCTIONS_BASE_URL;
+async function callFn(path, firebaseUser, body = null) {
+  const [idToken, appCheckHeader] = await Promise.all([firebaseUser.getIdToken(), getAppCheckHeader()]);
+  const res = await fetch(`${FUNCTIONS_BASE}/${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+      ...appCheckHeader,
+    },
+    ...(body !== null ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `${path} failed`);
+  }
+  return res.json();
+}
 
 // ─── Session Cookie: request minting via HTTPS function ──────────────────────
 async function mintSessionCookie(idToken) {
@@ -32,10 +46,11 @@ async function mintSessionCookie(idToken) {
     console.warn('[auth] VITE_CREATE_SESSION_URL not set — skipping session cookie.');
     return;
   }
+  const appCheckHeader = await getAppCheckHeader();
   const res = await fetch(fnUrl, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...appCheckHeader },
     body: JSON.stringify({ idToken }),
   });
   if (!res.ok) {
@@ -47,7 +62,7 @@ async function mintSessionCookie(idToken) {
 // ─── Post-login: set claims, refresh token, mint session cookie ───────────────
 async function finalizeLogin(firebaseUser) {
   // 1. Set custom claims server-side from userPermissions
-  await setCustomClaimsFn();
+  await callFn('setCustomClaims', firebaseUser);
 
   // 2. Force token refresh so new claims are available on client
   const freshToken = await firebaseUser.getIdToken(true);
@@ -90,7 +105,8 @@ export async function signOut() {
   // Revoke server-side session cookie
   const fnUrl = import.meta.env.VITE_REVOKE_SESSION_URL;
   if (fnUrl) {
-    await fetch(fnUrl, { method: 'POST', credentials: 'include' }).catch(() => {});
+    const appCheckHeader = await getAppCheckHeader();
+    await fetch(fnUrl, { method: 'POST', credentials: 'include', headers: { ...appCheckHeader } }).catch(() => {});
   }
   await firebaseSignOut(auth);
 }

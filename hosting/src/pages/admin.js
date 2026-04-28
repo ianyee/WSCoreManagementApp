@@ -1,16 +1,23 @@
 import { state } from '../state.js';
-import { functions } from '../firebase.js';
-import { httpsCallable } from 'firebase/functions';
+import { auth, getAppCheckHeader } from '../firebase.js';
 import { esc } from '../ui.js';
 import { showToast } from '../ui.js';
 import { signOut } from '../auth.js';
 import { router } from '../router.js';
 
-// ─── Callable refs ────────────────────────────────────────────────────────────
-const fnListUsers = httpsCallable(functions, 'adminListUsers');
-const fnCreateUser = httpsCallable(functions, 'adminCreateUser');
-const fnDeleteUser = httpsCallable(functions, 'adminDeleteUser');
-const fnSetPerms = httpsCallable(functions, 'adminSetUserPermissions');
+// ─── Helper: call admin function with Bearer token ─────────────────────────────
+const FUNCTIONS_BASE = import.meta.env.VITE_FUNCTIONS_BASE_URL;
+async function adminCall(fnName, body = {}) {
+  const [idToken, appCheckHeader] = await Promise.all([auth.currentUser.getIdToken(), getAppCheckHeader()]);
+  const res = await fetch(`${FUNCTIONS_BASE}/${fnName}`, {
+    method: fnName === 'adminListUsers' || fnName === 'getAdminStats' ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}`, ...appCheckHeader },
+    ...(fnName !== 'adminListUsers' && fnName !== 'getAdminStats' ? { body: JSON.stringify(body) } : {}),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `${fnName} failed`);
+  return json;
+}
 
 // ─── Users / Admin Page (SuperAdmin only) ─────────────────────────────────────
 export default async function renderAdmin(container) {
@@ -184,7 +191,7 @@ export default async function renderAdmin(container) {
     btn.disabled = true;
     btn.textContent = 'Creating…';
     try {
-      await fnCreateUser({ email, password, displayName, role, domains });
+      await adminCall('adminCreateUser', { email, password, displayName, role, domains });
       showToast(`User ${email} created.`, 'success');
       e.target.reset();
       await loadUsers();
@@ -217,7 +224,7 @@ export default async function renderAdmin(container) {
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {
-      await fnSetPerms({ uid, role, domains });
+      await adminCall('adminSetUserPermissions', { uid, role, domains });
       showToast('Permissions updated.', 'success');
       closeModal();
       await loadUsers();
@@ -239,8 +246,8 @@ async function loadUsers() {
   wrap.innerHTML = '<div class="table-loading">Loading users…</div>';
 
   try {
-    const res = await fnListUsers();
-    const users = res.data.users;
+    const res = await adminCall('adminListUsers');
+    const users = res.users;
 
     if (!users.length) {
       wrap.innerHTML = '<div class="table-empty">No users found.</div>';
@@ -314,7 +321,7 @@ async function loadUsers() {
       btn.addEventListener('click', async () => {
         if (!confirm(`Delete user ${btn.dataset.email}? This cannot be undone.`)) return;
         try {
-          await fnDeleteUser({ uid: btn.dataset.uid });
+          await adminCall('adminDeleteUser', { uid: btn.dataset.uid });
           showToast('User deleted.', 'success');
           await loadUsers();
         } catch (err) {

@@ -12,7 +12,7 @@ service firebase.storage {
 
     match /public/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if false;  // No client-side public writes — use Admin SDK only
     }
 
     match /users/{uid}/{allPaths=**} {

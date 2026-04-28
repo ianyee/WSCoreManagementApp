@@ -13,10 +13,10 @@
     "viewer:dev": "npm run dev --prefix emulator-ui",
     "seed": "npm run seed --prefix scripts",
     "bootstrap": "node scripts/bootstrap-superadmin.js",
-    "deploy": "npm run hosting:build && firebase deploy",
+    "deploy": "npm run hosting:build && firebase deploy --only firestore,functions,hosting",
     "deploy:hosting": "npm run hosting:build && firebase deploy --only hosting",
     "deploy:functions": "firebase deploy --only functions",
-    "deploy:rules": "firebase deploy --only firestore:rules,storage"
+    "deploy:rules": "firebase deploy --only firestore:rules"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
