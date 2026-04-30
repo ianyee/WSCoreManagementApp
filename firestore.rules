@@ -60,6 +60,25 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
+    // ─── clients/{clientId} ──────────────────────────────────────────────────
+    // Shared client registry used by all Workscale apps.
+    // All signed-in users may read (needed by child app pickers).
+    // Admin and SuperAdmin may create/update. No client deletion allowed.
+    match /clients/{clientId} {
+      allow read:   if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ─── counters/{counterId} ────────────────────────────────────────────────
+    // Sequence counters for auto-generated IDs (e.g. C-XXXX for clients).
+    // Admin and SuperAdmin may read/write via transactions.
+    match /counters/{counterId} {
+      allow read:  if isAdmin();
+      allow write: if isAdmin();
+    }
+
     // ─── Deny everything else ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

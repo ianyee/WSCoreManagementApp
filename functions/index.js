@@ -14,10 +14,14 @@ const db = getFirestore();
 setGlobalOptions({ region: 'asia-southeast1' });
 
 // ─── Helper: CORS with credentials support ───────────────────────────────────
-const ALLOWED_ORIGIN_RE = /^https?:\/\/(localhost(:\d+)?|.*\.workscale\.ph)$/;
+const ALLOWED_ORIGIN_PROD_RE = /^https:\/\/.*\.workscale\.ph$/;
+const ALLOWED_ORIGIN_DEV_RE  = /^https?:\/\/(localhost(:\d+)?|.*\.workscale\.ph)$/;
 function handleCors(req, res) {
   const origin = req.headers.origin || '';
-  if (ALLOWED_ORIGIN_RE.test(origin)) {
+  const allowed = process.env.FUNCTIONS_EMULATOR === 'true'
+    ? ALLOWED_ORIGIN_DEV_RE.test(origin)
+    : ALLOWED_ORIGIN_PROD_RE.test(origin);
+  if (allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Vary', 'Origin');
@@ -449,6 +453,38 @@ exports.onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
   const user = event.data?.data();
   if (!user) return;
   console.log(`[SSO] New user provisioned: ${user.email}`);
+});
+
+// ─── getClients ──────────────────────────────────────────────────────────────
+// Public read endpoint for child apps to fetch the shared client registry.
+// CORS-restricted to *.workscale.ph and localhost. No auth required — client
+// names are non-sensitive business data. Child app frontends call this directly.
+exports.getClients = onRequest(async (req, res) => {
+  if (handleCors(req, res)) return;
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed.' });
+    return;
+  }
+  try {
+    const snap = await db.collection('clients').get();
+    const clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Strip internal fields
+    const sanitized = clients.map(({ id, clientId, clientName, industry, contactPerson,
+      contactNumber, email, status }) => ({
+      id: id || clientId,
+      clientId: clientId || id,
+      clientName,
+      industry:      industry      || null,
+      contactPerson: contactPerson || null,
+      contactNumber: contactNumber || null,
+      email:         email         || null,
+      status:        status        || 'Active',
+    }));
+    res.status(200).json({ clients: sanitized });
+  } catch (err) {
+    console.error('[getClients] error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch clients.' });
+  }
 });
 
 // ─── Utility: parse cookie header ────────────────────────────────────────────

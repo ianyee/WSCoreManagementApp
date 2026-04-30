@@ -34,6 +34,11 @@ const routes = [
     requiredRole: 'SuperAdmin',
     loader: () => import('./pages/logs.js'),
   },
+  {
+    path: '/clients',
+    requiredRole: 'SuperAdmin',
+    loader: () => import('./pages/clients.js'),
+  },
 ];
 
 const appEl = () => document.getElementById('app');

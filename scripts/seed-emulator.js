@@ -88,6 +88,43 @@ async function seedFirestore() {
   await batch.commit();
 }
 
+// ─── Seed clients ─────────────────────────────────────────────────────────────
+const CLIENTS = [
+  { id: 'C-1001', clientName: 'Digits Trading Corp.',                               industry: 'Retail',                    contactPerson: 'Joanna Feir',          email: 'joannafeir@digits.ph' },
+  { id: 'C-1002', clientName: 'Environmental-Health Laboratory Services Cooperative', industry: 'Laboratory',               contactPerson: 'Diane Eva Bautista',    email: 'dabautista.ehlsc@gmail.com' },
+  { id: 'C-1003', clientName: 'Adele Fado Trading Corp.',                            industry: 'Advertising',               contactPerson: 'Vincent Bryan Co',     email: 'bryan@aftcorpph.com' },
+  { id: 'C-1004', clientName: 'SPX Express',                                         industry: 'Logistics',                 contactPerson: 'Cadison Olorosisimo',   email: 'cadison.olorosisimo@spxexpress.com' },
+  { id: 'C-1005', clientName: 'Cosmos Bazar Inc.',                                   industry: 'Wholesale Trade Industry',  contactPerson: 'Charles Jefferson Sy',  email: 'charles.sy@cosmos-bazar.com' },
+  { id: 'C-1006', clientName: 'Accupoint Systems Inc.',                              industry: null,                        contactPerson: null,                    email: null },
+  { id: 'C-1007', clientName: 'Beyond Innovations Inc.',                             industry: null,                        contactPerson: null,                    email: null },
+  { id: 'C-1008', clientName: 'Aquadys Inc.',                                        industry: null,                        contactPerson: null,                    email: null },
+  { id: 'C-1009', clientName: 'F2 Logistics',                                        industry: 'Logistics',                 contactPerson: null,                    email: null },
+  { id: 'C-1010', clientName: 'A Laundry Company Inc.',                              industry: null,                        contactPerson: null,                    email: null },
+  { id: 'C-1011', clientName: 'JW Summit Group Inc.',                                industry: null,                        contactPerson: null,                    email: null },
+  { id: 'C-1013', clientName: 'Sokany Trading Corp.',                                industry: null,                        contactPerson: null,                    email: null },
+  { id: 'C-1014', clientName: 'Beraga Trading',                                      industry: null,                        contactPerson: null,                    email: null },
+];
+
+async function seedClients() {
+  const batch = db.batch();
+  const now = FieldValue.serverTimestamp();
+  for (const c of CLIENTS) {
+    batch.set(db.collection('clients').doc(c.id), {
+      clientId:      c.id,
+      clientName:    c.clientName,
+      industry:      c.industry      || null,
+      contactPerson: c.contactPerson || null,
+      contactNumber: null,
+      email:         c.email         || null,
+      status:        'Active',
+      createdAt:     now,
+      updatedAt:     now,
+    });
+  }
+  batch.set(db.collection('counters').doc('clients'), { seq: 1014 });
+  await batch.commit();
+}
+
 // ─── Set custom claims ────────────────────────────────────────────────────────
 async function setAllClaims() {
   for (const acct of ACCOUNTS) {
@@ -117,6 +154,9 @@ async function seed() {
   await seedFirestore();
   console.log(`  ✓ users             (${ACCOUNTS.length})`);
   console.log(`  ✓ userPermissions   (${ACCOUNTS.filter((a) => a.role).length})`);
+
+  await seedClients();
+  console.log(`  ✓ clients           (${CLIENTS.length})`);
 
   console.log('\nSetting custom claims…');
   await setAllClaims();

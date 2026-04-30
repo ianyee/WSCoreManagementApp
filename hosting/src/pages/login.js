@@ -80,6 +80,38 @@ export default function renderLogin(container) {
 
       <p class="login-footer">Access is restricted to authorized personnel only.</p>
     </div>
+  </div>
+
+  ${redirectHost ? `
+  <div class="login-faq">
+    <button class="login-faq-toggle" aria-expanded="false" aria-controls="faq-body">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Stuck on the login screen at ${esc(redirectHost)}?
+      <svg class="faq-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="login-faq-body" id="faq-body" hidden>
+      <ol class="faq-steps">
+        <li>
+          <strong>Sign in here first</strong> using the form above, then go back to
+          <a href="https://${esc(redirectHost)}" target="_blank" rel="noopener">${esc(redirectHost)}</a>.
+        </li>
+        <li>
+          <strong>Hard-refresh the page</strong> at ${esc(redirectHost)} — press
+          <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> (Windows) or
+          <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> (Mac) to force a fresh load.
+        </li>
+        <li>
+          If it still shows a blank page, <strong>clear your browser cache</strong> for
+          <code>${esc(redirectHost)}</code>:
+          open DevTools → Application → Storage → Clear site data.
+        </li>
+        <li>
+          As a last resort, try <strong>opening the site in a private/incognito window</strong>.
+        </li>
+      </ol>
+    </div>
+  </div>
+  ` : ''}
   `;
 
   // ── Password toggle ───────────────────────────────────────────────────────
@@ -127,6 +159,16 @@ export default function renderLogin(container) {
       btn.textContent = 'Sign in';
     }
   });
+
+  // ── FAQ accordion ─────────────────────────────────────────────────────────
+  const faqToggle = document.querySelector('.login-faq-toggle');
+  if (faqToggle) {
+    faqToggle.addEventListener('click', () => {
+      const expanded = faqToggle.getAttribute('aria-expanded') === 'true';
+      faqToggle.setAttribute('aria-expanded', String(!expanded));
+      document.getElementById('faq-body').hidden = expanded;
+    });
+  }
 
   // ── Microsoft SSO sign-in ─────────────────────────────────────────────────
   document.getElementById('btn-ms-signin').addEventListener('click', async () => {

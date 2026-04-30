@@ -749,6 +749,72 @@ html.dark .login-card { background: rgba(15,23,42,0.95); border-color: #1E293B; 
 
 .login-footer { font-size: .75rem; color: var(--text-muted); text-align: center; }
 
+/* ─── Login FAQ accordion ──────────────────────────────────────────────────── */
+.login-faq {
+  max-width: 420px;
+  width: 100%;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.80);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+html.dark .login-faq { background: rgba(15,23,42,0.70); border-color: #1E293B; }
+
+.login-faq-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+  transition: background var(--transition), color var(--transition);
+}
+.login-faq-toggle:hover { background: var(--bg-surface); color: var(--text-primary); }
+.faq-chevron { margin-left: auto; flex-shrink: 0; transition: transform .2s ease; }
+.login-faq-toggle[aria-expanded="true"] .faq-chevron { transform: rotate(180deg); }
+
+.login-faq-body { padding: 0 16px 16px; }
+.faq-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: .8rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.faq-steps li { padding-left: 4px; }
+.faq-steps strong { color: var(--text-primary); font-weight: 600; }
+.faq-steps a { color: var(--primary); text-decoration: none; }
+.faq-steps a:hover { text-decoration: underline; }
+.faq-steps kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: .72rem;
+  font-family: inherit;
+  background: var(--bg-surface);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+.faq-steps code {
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: .75rem;
+  background: var(--bg-surface);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
 /* ─── Spinner ──────────────────────────────────────────────────────────────── */
 .spinner {
   display: inline-block;
