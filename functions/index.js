@@ -84,6 +84,27 @@ async function verifyAppCheck(req, res) {
   }
 }
 
+// ─── Helper: Firestore-based rate limiter (fixed 1-minute window) ───────────
+// Returns false if the key has exceeded maxPerMinute calls in the current minute.
+// Fails open on Firestore errors so legitimate requests are never blocked.
+// Configure a TTL policy in Firestore Console on _rateLimits.expireAt for cleanup.
+async function checkRateLimit(key, maxPerMinute) {
+  const window = Math.floor(Date.now() / 60000);
+  const ref = db.collection('_rateLimits').doc(`${key}:${window}`);
+  try {
+    return await db.runTransaction(async (t) => {
+      const doc = await t.get(ref);
+      const count = doc.exists ? doc.data().count : 0;
+      if (count >= maxPerMinute) return false;
+      t.set(ref, { count: count + 1, expireAt: new Date(Date.now() + 120000) });
+      return true;
+    });
+  } catch (err) {
+    console.warn('[rateLimit] check failed (fail-open):', err.message);
+    return true;
+  }
+}
+
 // ─── Audit log ───────────────────────────────────────────────────────────────
 // Skipped in emulator (FUNCTIONS_EMULATOR=true) to keep dev clean.
 // Each entry has an expireAt field — configure a TTL policy in Firestore
@@ -115,8 +136,18 @@ const ALLOWED_ROLES = ['SuperAdmin', 'Admin', 'User'];
 // ─── Helper: build custom claims from userPermissions doc ────────────────────
 function buildClaims(permDoc) {
   const role = ALLOWED_ROLES.includes(permDoc.role) ? permDoc.role : 'User';
-  // Validate domains fits within Firebase's 1000-byte claim limit
   const domains = permDoc.domains && typeof permDoc.domains === 'object' ? permDoc.domains : {};
+  // Enforce Firebase's ~1000-byte custom claim limit.
+  // Trim domains to the most recent entries if the serialized payload is too large.
+  const claims = { role, domains, sso: true };
+  if (JSON.stringify(claims).length > 950) {
+    const keys = Object.keys(domains);
+    // Drop oldest entries until we're safely under the limit
+    while (JSON.stringify({ role, domains, sso: true }).length > 950 && keys.length > 0) {
+      delete domains[keys.shift()];
+    }
+    console.warn(`[buildClaims] domains trimmed for uid=${permDoc.uid} — original had ${keys.length + Object.keys(domains).length} entries`);
+  }
   return { role, domains, sso: true };
 }
 
@@ -191,6 +222,13 @@ exports.createSessionCookie = onRequest(async (req, res) => {
     const idToken = req.body?.idToken;
     if (!idToken || typeof idToken !== 'string') {
       res.status(400).json({ error: 'idToken is required.' });
+      return;
+    }
+
+    // Rate limit: 10 session creations per minute per IP
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    if (!await checkRateLimit(`createSession:${ip}`, 10)) {
+      res.status(429).json({ error: 'Too many requests. Please try again later.' });
       return;
     }
 
@@ -316,6 +354,12 @@ exports.adminCreateUser = onRequest(async (req, res) => {
 
   const decoded = await assertBearerSuperAdmin(req, res);
   if (!decoded) return;
+
+  // Rate limit: 10 user creations per minute per calling admin
+  if (!await checkRateLimit(`createUser:${decoded.uid}`, 10)) {
+    res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    return;
+  }
 
   const { email, password, displayName, role, domains } = req.body || {};
   if (!email || !password) { res.status(400).json({ error: 'email and password required.' }); return; }
