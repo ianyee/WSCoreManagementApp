@@ -224,16 +224,8 @@ exports.createSessionCookie = onRequest(async (req, res) => {
 // ─── HTTP: verifySessionCookie ────────────────────────────────────────────────
 // GET with __session cookie → returns decoded claims.
 // Used by downstream apps (HR, Recruitment, Admin) to validate cross-domain SSO.
-exports.verifySessionCookie = onRequest({ secrets: ['INTERNAL_SECRET'] }, async (req, res) => {
+exports.verifySessionCookie = onRequest(async (req, res) => {
     if (handleCors(req, res)) return;
-    // Verify caller is a trusted internal service (skip in local emulator)
-    if (process.env.FUNCTIONS_EMULATOR !== 'true') {
-      const internalSecret = req.headers['x-internal-secret'];
-      if (!internalSecret || internalSecret !== process.env.INTERNAL_SECRET) {
-        res.status(401).json({ error: 'Unauthorized.' });
-        return;
-      }
-    }
     const sessionCookie = parseCookie(req.headers.cookie)['__session'];
     if (!sessionCookie) {
       res.status(401).json({ error: 'No session cookie.' });
