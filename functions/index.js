@@ -224,8 +224,16 @@ exports.createSessionCookie = onRequest(async (req, res) => {
 // ─── HTTP: verifySessionCookie ────────────────────────────────────────────────
 // GET with __session cookie → returns decoded claims.
 // Used by downstream apps (HR, Recruitment, Admin) to validate cross-domain SSO.
-exports.verifySessionCookie = onRequest(async (req, res) => {
+exports.verifySessionCookie = onRequest({ secrets: ['INTERNAL_SECRET'] }, async (req, res) => {
     if (handleCors(req, res)) return;
+    // Verify caller is a trusted internal service (skip in local emulator)
+    if (process.env.FUNCTIONS_EMULATOR !== 'true') {
+      const internalSecret = req.headers['x-internal-secret'];
+      if (!internalSecret || internalSecret !== process.env.INTERNAL_SECRET) {
+        res.status(401).json({ error: 'Unauthorized.' });
+        return;
+      }
+    }
     const sessionCookie = parseCookie(req.headers.cookie)['__session'];
     if (!sessionCookie) {
       res.status(401).json({ error: 'No session cookie.' });
@@ -466,6 +474,7 @@ exports.getClients = onRequest(async (req, res) => {
     res.status(405).json({ error: 'Method not allowed.' });
     return;
   }
+  let decodedClaims = null;
   if (process.env.FUNCTIONS_EMULATOR !== 'true') {
     const sessionCookie = parseCookie(req.headers.cookie || '')['__session'];
     if (!sessionCookie) {
@@ -473,7 +482,7 @@ exports.getClients = onRequest(async (req, res) => {
       return;
     }
     try {
-      await getAuth().verifySessionCookie(sessionCookie, true);
+      decodedClaims = await getAuth().verifySessionCookie(sessionCookie, true);
     } catch {
       res.status(401).json({ error: 'Session invalid or expired.' });
       return;
@@ -482,18 +491,25 @@ exports.getClients = onRequest(async (req, res) => {
   try {
     const snap = await db.collection('clients').get();
     const clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Strip internal fields
+    // Privileged roles see contact details; regular users see only public fields
+    const isPrivileged = ['SuperAdmin', 'Admin'].includes(decodedClaims?.role);
     const sanitized = clients.map(({ id, clientId, clientName, industry, contactPerson,
-      contactNumber, email, status }) => ({
-      id: id || clientId,
-      clientId: clientId || id,
-      clientName,
-      industry:      industry      || null,
-      contactPerson: contactPerson || null,
-      contactNumber: contactNumber || null,
-      email:         email         || null,
-      status:        status        || 'Active',
-    }));
+      contactNumber, email, status }) => {
+      const base = {
+        id: id || clientId,
+        clientId: clientId || id,
+        clientName,
+        industry: industry || null,
+        status:   status   || 'Active',
+      };
+      if (isPrivileged) {
+        base.contactPerson = contactPerson || null;
+        base.contactNumber = contactNumber || null;
+        base.email         = email         || null;
+      }
+      return base;
+    });
+    res.setHeader('Cache-Control', 'private, max-age=3600');
     res.status(200).json({ clients: sanitized });
   } catch (err) {
     console.error('[getClients] error:', err.message);
