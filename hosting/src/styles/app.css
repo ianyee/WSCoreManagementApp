@@ -537,6 +537,59 @@ html.dark .domain-entry { background: rgba(255,255,255,0.03); }
   border-color: var(--primary);
 }
 
+.domain-builder__add-domain {
+  align-self: flex-start;
+  font-size: .78rem;
+  padding: 5px 12px;
+  color: var(--primary);
+  border: 1.5px dashed rgba(16,185,129,0.35);
+  border-radius: var(--radius-sm);
+}
+.domain-builder__add-domain:hover {
+  background: rgba(16,185,129,0.06);
+  border-color: var(--primary);
+}
+
+/* ─── Domain toggle rows (new Firestore-driven builder) ─────────────────────── */
+.domain-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  gap: 12px;
+  background: #fff;
+}
+.domain-toggle-row__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1;
+  font-size: .82rem;
+  min-width: 0;
+}
+.domain-toggle-row__check input[type=checkbox] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+.domain-toggle-row__name {
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+}
+.domain-toggle-row__domain {
+  font-size: .73rem;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ─── Action buttons ────────────────────────────────────────────────────────── */
 .action-btns { display: flex; align-items: center; gap: 6px; }
 

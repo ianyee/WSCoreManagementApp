@@ -19,7 +19,11 @@ microsoftProvider.setCustomParameters({
 });
 
 // ─── Helper: call a function endpoint with Bearer token ──────────────────────
-const FUNCTIONS_BASE = import.meta.env.VITE_FUNCTIONS_BASE_URL;
+const _isLocalhost = typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const FUNCTIONS_BASE = _isLocalhost
+  ? 'http://localhost:5001/workscale-core-ph/asia-southeast1'
+  : import.meta.env.VITE_FUNCTIONS_BASE_URL;
 async function callFn(path, firebaseUser, body = null) {
   const [idToken, appCheckHeader] = await Promise.all([firebaseUser.getIdToken(), getAppCheckHeader()]);
   const res = await fetch(`${FUNCTIONS_BASE}/${path}`, {
@@ -41,9 +45,9 @@ async function callFn(path, firebaseUser, body = null) {
 // ─── Session Cookie: request minting via HTTPS function ──────────────────────
 async function mintSessionCookie(idToken) {
   const fnUrl = import.meta.env.VITE_CREATE_SESSION_URL;
-  if (!fnUrl) {
+  if (!fnUrl || _isLocalhost) {
     // In emulator dev, skip session cookie minting (not supported locally)
-    console.warn('[auth] VITE_CREATE_SESSION_URL not set — skipping session cookie.');
+    console.warn('[auth] Skipping session cookie (localhost or VITE_CREATE_SESSION_URL not set).');
     return;
   }
   const appCheckHeader = await getAppCheckHeader();

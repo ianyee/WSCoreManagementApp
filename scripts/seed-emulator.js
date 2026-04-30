@@ -96,11 +96,22 @@ async function setAllClaims() {
   }
 }
 
+// ─── Set plaintext passwords (emulator supports this, import hash doesn't work for sign-in) ──
+async function setPasswords() {
+  for (const { uid } of ACCOUNTS) {
+    await auth.updateUser(uid, { password: 'password123' });
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function seed() {
   console.log('Seeding Auth emulator…');
   await importAuthUsers();
   ACCOUNTS.forEach((a) => console.log(`  ✓ auth  ${a.email}  (uid: ${a.uid})`));
+
+  console.log('\nSetting passwords…');
+  await setPasswords();
+  console.log('  ✓ passwords set');
 
   console.log('\nSeeding Firestore emulator…');
   await seedFirestore();

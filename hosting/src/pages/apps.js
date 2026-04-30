@@ -1,60 +1,46 @@
 import { signOut } from '../auth.js';
 import { state } from '../state.js';
 import { router } from '../router.js';
+import { db } from '../firebase.js';
+import { collection, getDocs } from 'firebase/firestore';
 
-// ─── Known app registry ───────────────────────────────────────────────────────
-// Maps a domain key (from the `domains` claim) to display metadata.
-const APP_REGISTRY = {
-  'orbit.workscale.ph': {
-    name: 'HR Management',
-    description: 'Employees, onboarding, offboarding & HR ops',
-    url: 'https://orbit.workscale.ph',
-    color: '#6366f1',
-    initial: 'HR',
-  },
-  // Future apps can be registered here
-};
-
-function domainToAppMeta(domain) {
-  if (APP_REGISTRY[domain]) return APP_REGISTRY[domain];
-  // Fallback for unregistered domains
-  const label = domain.split('.')[0];
-  return {
-    name: label.charAt(0).toUpperCase() + label.slice(1),
-    description: domain,
-    url: `https://${domain}`,
-    color: '#0ea5e9',
-    initial: label.slice(0, 2).toUpperCase(),
-  };
-}
-
-export default function renderApps(container) {
+export default async function renderApps(container) {
   const user  = state.sessionUser;
   const email = user?.email || '';
   const role  = user?.role  || '';
   const isSuperAdmin = role === 'SuperAdmin';
 
-  // Domains granted to this user. SuperAdmins see all registered apps.
-  const domains = isSuperAdmin
-    ? Object.keys(APP_REGISTRY)
-    : Object.keys(user?.domains || {});
+  // Load registered domains from Firestore
+  let registeredDomains = [];
+  try {
+    const snap = await getDocs(collection(db, 'app_domains'));
+    registeredDomains = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch {
+    registeredDomains = [];
+  }
 
-  const appCards = domains.map((domain) => {
-    const app = domainToAppMeta(domain);
+  // Filter: SuperAdmin sees all; others see only domains they have access to
+  const visibleDomains = isSuperAdmin
+    ? registeredDomains
+    : registeredDomains.filter(d => user?.domains?.[d.domain]);
+
+  const appCards = visibleDomains.map((d) => {
+    const safeHref = /^https?:\/\//.test(d.url || '') ? d.url : `https://${d.domain}`;
+    const iconHtml = d.logo
+      ? `<img src="${d.logo}" alt="" class="app-card__logo" />`
+      : `<div class="app-card__icon" style="background:${d.color||'#6366f1'};"><span class="app-card__initial">${((d.name||d.domain).slice(0,2)).toUpperCase()}</span></div>`;
     return `
-      <a href="${app.url}" target="_blank" rel="noopener noreferrer" class="app-card" data-domain="${domain}">
-        <div class="app-card__icon" style="background:${app.color};">
-          <span class="app-card__initial">${app.initial}</span>
-        </div>
+      <a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="app-card" data-domain="${d.domain}">
+        ${iconHtml}
         <div class="app-card__info">
-          <div class="app-card__name">${app.name}</div>
-          <div class="app-card__desc">${app.description}</div>
+          <div class="app-card__name">${d.name || d.domain}</div>
+          <div class="app-card__desc">${d.description || d.domain}</div>
         </div>
       </a>
     `;
   }).join('');
 
-  const emptyState = domains.length === 0 ? `
+  const emptyState = visibleDomains.length === 0 ? `
     <div class="apps-empty">
       <div class="apps-empty__icon">🔒</div>
       <p>You don't have access to any applications yet.</p>
@@ -244,6 +230,15 @@ export default function renderApps(container) {
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
+      }
+      .app-card__logo {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        object-fit: contain;
+        border: 1px solid #e2e8f0;
+        flex-shrink: 0;
+        background: #fff;
       }
       .app-card__initial {
         color: #fff;

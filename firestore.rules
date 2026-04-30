@@ -52,6 +52,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ─── app_domains/{domainKey} ─────────────────────────────────────────────
+    // All authenticated users may read (needed for app launcher + user modal).
+    // Only SuperAdmin may write.
+    match /app_domains/{domainKey} {
+      allow read:  if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
     // ─── Deny everything else ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

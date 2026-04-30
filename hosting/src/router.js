@@ -25,6 +25,11 @@ const routes = [
     loader: () => import('./pages/admin.js'),
   },
   {
+    path: '/domains',
+    requiredRole: 'SuperAdmin',
+    loader: () => import('./pages/domains.js'),
+  },
+  {
     path: '/logs',
     requiredRole: 'SuperAdmin',
     loader: () => import('./pages/logs.js'),

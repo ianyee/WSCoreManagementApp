@@ -16,8 +16,10 @@ export const functions = getFunctions(app, 'asia-southeast1'); // asia-southeast
 export const storage = getStorage(app);
 
 // ─── App Check (production only — emulator skips it) ─────────────────────────────
+const _isLocalhost = typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 let _appCheck = null;
-if (!import.meta.env.DEV && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+if (!import.meta.env.DEV && !_isLocalhost && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
   _appCheck = initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
     isTokenAutoRefreshEnabled: true,
@@ -34,8 +36,8 @@ export async function getAppCheckHeader() {
   }
 }
 
-// ─── Emulator connections (dev only) ─────────────────────────────────────────
-if (import.meta.env.DEV) {
+// ─── Emulator connections (dev or localhost) ──────────────────────────────────
+if (import.meta.env.DEV || _isLocalhost) {
   connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: false });
   connectFirestoreEmulator(db, 'localhost', 8080);
   connectFunctionsEmulator(functions, 'localhost', 5001);
