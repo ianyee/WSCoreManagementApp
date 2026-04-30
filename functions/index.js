@@ -223,9 +223,18 @@ exports.createSessionCookie = onRequest(async (req, res) => {
 
 // ─── HTTP: verifySessionCookie ────────────────────────────────────────────────
 // GET with __session cookie → returns decoded claims.
-// Used by downstream apps (HR, Recruitment, Admin) to validate cross-domain SSO.
-exports.verifySessionCookie = onRequest(async (req, res) => {
+// Server-to-server only: caller must supply x-internal-secret header.
+// Used by downstream Cloud Functions (HR, Recruitment) to validate cross-domain SSO.
+exports.verifySessionCookie = onRequest({ secrets: ['INTERNAL_SECRET'] }, async (req, res) => {
     if (handleCors(req, res)) return;
+
+    // Reject requests that don't carry the shared server secret.
+    // Browsers cannot include this header, so this endpoint is server-only.
+    if (req.headers['x-internal-secret'] !== process.env.INTERNAL_SECRET) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+
     const sessionCookie = parseCookie(req.headers.cookie)['__session'];
     if (!sessionCookie) {
       res.status(401).json({ error: 'No session cookie.' });
