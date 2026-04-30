@@ -1,4 +1,5 @@
 .env.local
+.secret
 node_modules/
 hosting/node_modules/
 hosting/dist/

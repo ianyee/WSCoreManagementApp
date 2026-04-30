@@ -162,7 +162,6 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=<this-apps-sender-id>
 VITE_FIREBASE_APP_ID=<this-apps-app-id>
 
 # ── Core auth hub endpoints ──────────────────────────────────────────────────
-VITE_VERIFY_SESSION_URL=https://core.workscale.ph/__/verify
 VITE_REVOKE_SESSION_URL=https://core.workscale.ph/__/revoke
 VITE_CORE_LOGIN_URL=https://core.workscale.ph/login
 
@@ -232,17 +231,18 @@ if (import.meta.env.DEV) {
 
 ## §8 — Auth Guard Pattern (`auth.js`)
 
-The auth module has a built-in dev bypass: when `VITE_VERIFY_SESSION_URL` is not set,
-it assigns a mock user so the app loads without hitting core.
+The auth module uses a **single `mintToken` call** — the Cloud Function verifies the
+`__session` cookie server-to-server and returns claims + a custom Firebase token in one
+round-trip. The browser never calls `verifySessionCookie` directly.
+The dev bypass activates when `VITE_MINT_TOKEN_URL` is not set.
 
 ```js
 import { signInWithCustomToken, signOut as firebaseSignOut } from 'firebase/auth';
-import { auth } from './firebase.js';
+import { auth, getAppCheckHeader } from './firebase.js';
 import { state } from './state.js';
 import { router } from './router.js';
 import { cache } from './cache.js';
 
-const VERIFY_SESSION_URL = import.meta.env.VITE_VERIFY_SESSION_URL;
 const REVOKE_SESSION_URL  = import.meta.env.VITE_REVOKE_SESSION_URL;
 const MINT_TOKEN_URL      = import.meta.env.VITE_MINT_TOKEN_URL;
 const CORE_LOGIN_URL      = import.meta.env.VITE_CORE_LOGIN_URL;
@@ -250,44 +250,50 @@ const THIS_DOMAIN         = 'orbit.workscale.ph'; // ← change per app
 
 export async function requireAuth() {
   // Dev bypass: no URL configured → use mock user
-  if (!VERIFY_SESSION_URL) {
-    console.warn('[auth] VITE_VERIFY_SESSION_URL not set — using dev bypass.');
+  if (!MINT_TOKEN_URL) {
+    console.warn('[auth] VITE_MINT_TOKEN_URL not set — using dev bypass.');
     state.sessionUser = { uid: 'dev-user', email: 'dev@workscale.ph', role: 'Admin' };
     return state.sessionUser;
   }
 
   try {
-    // 1. Verify the shared __session cookie with core
-    const res = await fetch(VERIFY_SESSION_URL, { credentials: 'include' });
-    if (!res.ok) throw new Error('no session');
+    const acHeader = await getAppCheckHeader();
+    const mintRes = await fetch(MINT_TOKEN_URL, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...acHeader },
+    });
 
-    const claims = await res.json();
-    // claims: { uid, email, role, domains: { 'orbit.workscale.ph': { role: '...' } }, sso: true }
-
-    const access = claims.domains?.[THIS_DOMAIN];
-    if (!access) {
-      state.sessionUser = { uid: claims.uid, email: claims.email, role: null, noAccess: true };
+    if (mintRes.status === 403) {
+      // Session valid but no access to this domain
+      let body = {};
+      try { body = await mintRes.json(); } catch (_) {}
+      state.sessionUser = { role: null, noAccess: true, email: body.email };
       const err = new Error('no domain access');
       err.code = 'auth/no-domain-access';
       throw err;
     }
 
-    state.sessionUser = { uid: claims.uid, email: claims.email, role: access.role, claims };
-
-    // 2. Sign into THIS app's Firebase Auth via custom token
-    //    so Firestore security rules receive request.auth with correct claims.
-    await auth.authStateReady();
-    if (!auth.currentUser && MINT_TOKEN_URL) {
-      try {
-        const mintRes = await fetch(MINT_TOKEN_URL, { method: 'POST', credentials: 'include' });
-        if (mintRes.ok) {
-          const { token } = await mintRes.json();
-          await signInWithCustomToken(auth, token);
-        }
-      } catch (mintErr) {
-        console.warn('[auth] mintToken failed:', mintErr.message);
-      }
+    if (!mintRes.ok) {
+      // No valid session → redirect to core login
+      throw new Error('no session');
     }
+
+    const mintData = await mintRes.json();
+    // { token, uid, email, role, domains }
+
+    // Sign into Firebase Auth client-side so Firestore rules receive request.auth
+    await auth.authStateReady();
+    if (!auth.currentUser) {
+      await signInWithCustomToken(auth, mintData.token);
+    }
+
+    state.sessionUser = {
+      uid:    mintData.uid,
+      email:  mintData.email,
+      role:   mintData.role,
+      claims: mintData,
+    };
 
     return state.sessionUser;
   } catch (err) {
@@ -328,19 +334,22 @@ async function verifySession(req, res) {
   if (!sessionCookie) { res.status(401).json({ error: 'Not authenticated.' }); return null; }
   try {
     const coreRes = await fetch(CORE_VERIFY_URL, {
-      headers: { cookie: `__session=${sessionCookie}` },
+      headers: {
+        cookie: `__session=${sessionCookie}`,
+        'x-internal-secret': process.env.INTERNAL_SECRET,
+      },
     });
     if (!coreRes.ok) { res.status(401).json({ error: 'Session invalid or expired.' }); return null; }
     const claims = await coreRes.json();
     const access = claims.domains?.[THIS_DOMAIN];
-    if (!access) { res.status(403).json({ error: 'No access to this application.' }); return null; }
+    if (!access) { res.status(403).json({ error: 'No access to this application.', email: claims.email }); return null; }
     return { ...claims, domainRole: access.role };
   } catch (err) {
     res.status(500).json({ error: 'Internal error.' }); return null;
   }
 }
 
-exports.mintToken = onRequest(async (req, res) => {
+exports.mintToken = onRequest({ secrets: ['INTERNAL_SECRET'] }, async (req, res) => {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed.' }); return; }
 
@@ -349,11 +358,17 @@ exports.mintToken = onRequest(async (req, res) => {
 
   try {
     const customToken = await getAuth().createCustomToken(caller.uid, {
-      role:    caller.role,
+      role:    caller.domains?.[THIS_DOMAIN]?.role || caller.role || '',
       domains: caller.domains,
       sso:     caller.sso,
     });
-    res.status(200).json({ token: customToken });
+    res.status(200).json({
+      token:   customToken,
+      uid:     caller.uid,
+      email:   caller.email,
+      role:    caller.domains?.[THIS_DOMAIN]?.role || caller.role || '',
+      domains: caller.domains,
+    });
   } catch (err) {
     console.error('[mintToken] error:', err.message);
     res.status(500).json({ error: 'Internal error.' });
@@ -365,6 +380,17 @@ exports.mintToken = onRequest(async (req, res) => {
 > `getAuth().verifySessionCookie()` locally. This is intentional — the session cookie was issued
 > by `workscale-core-ph`'s Admin SDK, and verifying it requires that project's credentials.
 > Calling the HTTP endpoint avoids any cross-project credential issues.
+
+> **`INTERNAL_SECRET`**: the `x-internal-secret` header authenticates this server-to-server call.
+> Core's `verifySessionCookie` rejects requests missing this header with a 401.
+> Store the secret in Secret Manager on **this project** with key name `INTERNAL_SECRET`,
+> using the **same value** as core (found in `WSCoreManagementApp/.secret`):
+> ```bash
+> # Copy the value from .secret, then:
+> firebase functions:secrets:set INTERNAL_SECRET
+> ```
+> The secret is injected at runtime via `onRequest({ secrets: ['INTERNAL_SECRET'] }, ...)` —
+> never hardcode it in source.
 
 ---
 
@@ -553,8 +579,7 @@ The emulators handle Firestore/Auth locally.
 Create `hosting/.env.development.local` (overrides `.env.local` in dev only):
 
 ```env
-# Blank these out — auth.js dev bypass activates when VITE_VERIFY_SESSION_URL is unset
-VITE_VERIFY_SESSION_URL=
+# Blank these out — auth.js dev bypass activates when VITE_MINT_TOKEN_URL is unset
 VITE_REVOKE_SESSION_URL=
 VITE_MINT_TOKEN_URL=
 VITE_CORE_LOGIN_URL=
@@ -600,7 +625,7 @@ given URL — on a second bounce it stops and shows an error.
 
 | Cause | Fix |
 |---|---|
-| `credentials: 'include'` missing on fetch | Add it to every call to `VERIFY_SESSION_URL` |
+| `credentials: 'include'` missing on fetch | Add it to the `mintToken` fetch call |
 | CSP blocks `verifySessionCookie` | Add core's functions URL to `connect-src` |
 | User has no `domains['orbit.workscale.ph']` | SuperAdmin must grant domain access in core |
 | `mintToken` fails with "error minting token" | Grant **Service Account Token Creator** role (§5) |
@@ -615,7 +640,7 @@ given URL — on a second bounce it stops and shows an error.
 | `auth/unauthorized-domain` on sign-in | Subdomain not in core's Authorized Domains | Add to Firebase Console → workscale-core-ph → Auth → Authorized domains (§3) |
 | `mintToken` returns 500 "error minting token" | Missing `Service Account Token Creator` IAM role | See §5 |
 | Firestore returns `permission-denied` | `signInWithCustomToken` never called / mintToken failed | Check browser console for `[auth] mintToken failed` warning |
-| 401 on `verifySessionCookie` | `credentials: 'include'` missing or cookie not set yet | Ensure cookie was set by core after login |
+| `mintToken` returns 401 | `__session` cookie missing, expired, or `INTERNAL_SECRET` mismatch | Ensure cookie is set by core after login; check Secret Manager has `INTERNAL_SECRET` on both projects |
 | Claims show empty `domains` | User not granted access in core admin UI | SuperAdmin must add domain key (§13) |
 | Works locally but not on subdomain | Domain not in core's Authorized Domains | See §3 |
 | Infinite redirect loop | CSP blocking verify call or no domain access | See §16 |
@@ -630,7 +655,7 @@ given URL — on a second bounce it stops and shows an error.
 | Auth domain (hardcoded in all apps) | `core.workscale.ph` |
 | Core Firebase project | `workscale-core-ph` |
 | Core functions base URL | `https://asia-southeast1-workscale-core-ph.cloudfunctions.net` |
-| `verifySessionCookie` | `GET https://asia-southeast1-workscale-core-ph.cloudfunctions.net/verifySessionCookie` |
+| `verifySessionCookie` | `https://asia-southeast1-workscale-core-ph.cloudfunctions.net/verifySessionCookie` — called **server-to-server only** by `mintToken`; never called from the browser |
 | Session cookie name | `__session` |
 | Cookie domain scope | `.workscale.ph` (shared across all subdomains) |
 | Session duration | 14 days |
