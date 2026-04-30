@@ -456,15 +456,18 @@ exports.onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
 });
 
 // ─── getClients ──────────────────────────────────────────────────────────────
-// Public read endpoint for child apps to fetch the shared client registry.
-// CORS-restricted to *.workscale.ph and localhost. No auth required — client
-// names are non-sensitive business data. Child app frontends call this directly.
+// Authenticated read endpoint for child apps to fetch the shared client registry.
+// CORS-restricted to *.workscale.ph and localhost. Requires App Check + valid
+// Firebase ID token (any authenticated user).
 exports.getClients = onRequest(async (req, res) => {
   if (handleCors(req, res)) return;
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed.' });
     return;
   }
+  if (!await verifyAppCheck(req, res)) return;
+  const decoded = await verifyBearerToken(req, res);
+  if (!decoded) return;
   try {
     const snap = await db.collection('clients').get();
     const clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
