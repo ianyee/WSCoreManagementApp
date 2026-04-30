@@ -19,6 +19,11 @@
         "region": "asia-southeast1"
       },
       {
+        "source": "/api/getClients",
+        "function": "getClients",
+        "region": "asia-southeast1"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

@@ -457,17 +457,28 @@ exports.onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
 
 // ─── getClients ──────────────────────────────────────────────────────────────
 // Authenticated read endpoint for child apps to fetch the shared client registry.
-// CORS-restricted to *.workscale.ph and localhost. Requires App Check + valid
-// Firebase ID token (any authenticated user).
+// CORS-restricted to *.workscale.ph and localhost. Requires a valid __session
+// cookie (the same cross-domain SSO cookie issued by Core). Called through
+// the /api/getClients hosting rewrite so the cookie is sent automatically.
 exports.getClients = onRequest(async (req, res) => {
   if (handleCors(req, res)) return;
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed.' });
     return;
   }
-  if (!await verifyAppCheck(req, res)) return;
-  const decoded = await verifyBearerToken(req, res);
-  if (!decoded) return;
+  if (process.env.FUNCTIONS_EMULATOR !== 'true') {
+    const sessionCookie = parseCookie(req.headers.cookie || '')['__session'];
+    if (!sessionCookie) {
+      res.status(401).json({ error: 'Not authenticated.' });
+      return;
+    }
+    try {
+      await getAuth().verifySessionCookie(sessionCookie, true);
+    } catch {
+      res.status(401).json({ error: 'Session invalid or expired.' });
+      return;
+    }
+  }
   try {
     const snap = await db.collection('clients').get();
     const clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
