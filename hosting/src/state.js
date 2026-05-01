@@ -24,4 +24,21 @@ export const state = {
    * @type {{ ts: string, type: string, message: string }[]}
    */
   clientErrors: [],
+
+  /**
+   * Users list cache for the admin panel.
+   * @type {{
+   *   users: Array,
+   *   nextCursor: string | null,
+   *   allLoaded: boolean,
+   *   fetchedAt: number
+   * } | null}
+   */
+  usersCache: null,
+
+  /**
+   * Registered domains cache (app_domains collection).
+   * @type {{ domains: Array, fetchedAt: number } | null}
+   */
+  domainsCache: null,
 };

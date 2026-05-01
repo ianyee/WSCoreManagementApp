@@ -412,6 +412,12 @@ exports.adminDeleteUser = onRequest(async (req, res) => {
 });
 
 // ─── HTTP: adminListUsers ─────────────────────────────────────────────────────
+// Supports cursor-based pagination and delta (since) fetches.
+// Query params (GET) or body fields (POST):
+//   pageSize  — number of users per page, default 50, max 200
+//   cursor    — UID of the last user from the previous page
+//   since     — ISO timestamp; if set, returns only users whose permissions
+//               were updated after this time (delta refresh)
 exports.adminListUsers = onRequest(async (req, res) => {
   if (handleCors(req, res)) return;
   if (req.method !== 'GET' && req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed.' }); return; }
@@ -420,18 +426,86 @@ exports.adminListUsers = onRequest(async (req, res) => {
   const decoded = await assertBearerSuperAdmin(req, res);
   if (!decoded) return;
 
+  const params = req.method === 'GET' ? req.query : (req.body || {});
+  const PAGE_SIZE = Math.min(parseInt(params.pageSize) || 50, 200);
+  const cursorUid = params.cursor || null;
+  const since = params.since || null;
+
   try {
-    const [usersSnap, permsSnap] = await Promise.all([
-      db.collection('users').orderBy('createdAt', 'desc').get(),
-      db.collection('userPermissions').get(),
-    ]);
+    let userDocs;
+
+    if (since) {
+      // ── Delta mode: return only users whose permissions changed after `since` ──
+      // Query userPermissions by updatedAt, then fetch the corresponding user docs.
+      const sinceDate = new Date(since);
+      const deltaPermsSnap = await db.collection('userPermissions')
+        .where('updatedAt', '>', sinceDate)
+        .get();
+
+      if (deltaPermsSnap.empty) {
+        return res.status(200).json({ users: [], nextCursor: null, hasMore: false, delta: true });
+      }
+
+      const uids = deltaPermsSnap.docs.map(d => d.id);
+      const [userSnaps, permsMap] = await Promise.all([
+        Promise.all(uids.map(uid => db.doc(`users/${uid}`).get())),
+        Promise.resolve(Object.fromEntries(deltaPermsSnap.docs.map(d => [d.id, d.data()]))),
+      ]);
+
+      const users = userSnaps
+        .filter(snap => snap.exists)
+        .map(snap => {
+          const u = snap.data();
+          const p = permsMap[u.uid] || {};
+          return {
+            uid: u.uid,
+            email: u.email,
+            displayName: u.displayName,
+            role: p.role || 'User',
+            domains: p.domains || {},
+            ssoAuto: p.updatedBy === 'sso-auto',
+            createdAt: u.createdAt?.toDate?.()?.toISOString() || null,
+            lastLoginAt: u.lastLoginAt?.toDate?.()?.toISOString() || null,
+          };
+        });
+
+      return res.status(200).json({ users, nextCursor: null, hasMore: false, delta: true });
+    }
+
+    // ── Paginated mode ────────────────────────────────────────────────────────
+    let usersQuery = db.collection('users').orderBy('createdAt', 'desc').limit(PAGE_SIZE + 1);
+
+    if (cursorUid) {
+      const cursorDoc = await db.doc(`users/${cursorUid}`).get();
+      if (cursorDoc.exists) usersQuery = usersQuery.startAfter(cursorDoc);
+    }
+
+    const usersSnap = await usersQuery.get();
+    const hasMore = usersSnap.docs.length > PAGE_SIZE;
+    userDocs = usersSnap.docs.slice(0, PAGE_SIZE);
+
+    // Fetch only the permissions for this page's users in parallel
+    const permsSnaps = await Promise.all(userDocs.map(d => db.doc(`userPermissions/${d.id}`).get()));
     const permsMap = {};
-    permsSnap.docs.forEach((d) => { permsMap[d.id] = d.data(); });
-    const users = usersSnap.docs.map((d) => {
+    permsSnaps.forEach(snap => { if (snap.exists) permsMap[snap.id] = snap.data(); });
+
+    const users = userDocs.map(d => {
       const u = d.data();
-      return { uid: u.uid, email: u.email, displayName: u.displayName, role: permsMap[u.uid]?.role || 'User', domains: permsMap[u.uid]?.domains || {}, ssoAuto: permsMap[u.uid]?.updatedBy === 'sso-auto', createdAt: u.createdAt?.toDate?.()?.toISOString() || null, lastLoginAt: u.lastLoginAt?.toDate?.()?.toISOString() || null };
+      const p = permsMap[u.uid] || {};
+      return {
+        uid: u.uid,
+        email: u.email,
+        displayName: u.displayName,
+        role: p.role || 'User',
+        domains: p.domains || {},
+        ssoAuto: p.updatedBy === 'sso-auto',
+        createdAt: u.createdAt?.toDate?.()?.toISOString() || null,
+        lastLoginAt: u.lastLoginAt?.toDate?.()?.toISOString() || null,
+      };
     });
-    res.status(200).json({ users });
+
+    const nextCursor = hasMore ? userDocs[userDocs.length - 1].id : null;
+    res.status(200).json({ users, nextCursor, hasMore });
   } catch (err) {
     console.error('[adminListUsers] error:', err.message);
     res.status(500).json({ error: 'Internal error.' });

@@ -112,6 +112,10 @@ export async function resetPassword(email) {
 
 // ─── Sign Out ─────────────────────────────────────────────────────────────────
 export async function signOut() {
+  // Clear in-memory caches so next login gets fresh data
+  state.usersCache = null;
+  state.domainsCache = null;
+
   // Revoke server-side session cookie
   const fnUrl = import.meta.env.VITE_REVOKE_SESSION_URL;
   if (fnUrl) {

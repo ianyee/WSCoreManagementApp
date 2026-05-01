@@ -6,17 +6,22 @@ import { signOut } from '../auth.js';
 import { router } from '../router.js';
 import { collection, getDocs } from 'firebase/firestore';
 
-// ─── Domain registry cache ────────────────────────────────────────────────────
-let _domainsCache = null;
+// ─── Cache TTL (5 minutes) ────────────────────────────────────────────────────
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+// ─── Domain registry cache (state-backed) ────────────────────────────────────
 async function getRegisteredDomains() {
-  if (_domainsCache) return _domainsCache;
+  const now = Date.now();
+  if (state.domainsCache && (now - state.domainsCache.fetchedAt) < CACHE_TTL_MS) {
+    return state.domainsCache.domains;
+  }
   try {
     const snap = await getDocs(collection(db, 'app_domains'));
-    _domainsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.domainsCache = { domains: snap.docs.map(d => ({ id: d.id, ...d.data() })), fetchedAt: now };
   } catch {
-    _domainsCache = [];
+    state.domainsCache = { domains: [], fetchedAt: now };
   }
-  return _domainsCache;
+  return state.domainsCache.domains;
 }
 
 // ─── Helper: call admin function with Bearer token ─────────────────────────────
@@ -25,16 +30,45 @@ const _isLocalhost = typeof window !== 'undefined' &&
 const FUNCTIONS_BASE = _isLocalhost
   ? 'http://localhost:5001/workscale-core-ph/asia-southeast1'
   : import.meta.env.VITE_FUNCTIONS_BASE_URL;
+
 async function adminCall(fnName, body = {}) {
+  const isGet = fnName === 'getAdminStats';
   const [idToken, appCheckHeader] = await Promise.all([auth.currentUser.getIdToken(), getAppCheckHeader()]);
   const res = await fetch(`${FUNCTIONS_BASE}/${fnName}`, {
-    method: fnName === 'adminListUsers' || fnName === 'getAdminStats' ? 'GET' : 'POST',
+    method: isGet ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}`, ...appCheckHeader },
-    ...(fnName !== 'adminListUsers' && fnName !== 'getAdminStats' ? { body: JSON.stringify(body) } : {}),
+    ...(isGet ? {} : { body: JSON.stringify(body) }),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `${fnName} failed`);
   return json;
+}
+
+// ─── Paginated adminListUsers ─────────────────────────────────────────────────
+async function fetchUsersPage(cursor = null) {
+  const [idToken, appCheckHeader] = await Promise.all([auth.currentUser.getIdToken(), getAppCheckHeader()]);
+  const body = { pageSize: 50, ...(cursor ? { cursor } : {}) };
+  const res = await fetch(`${FUNCTIONS_BASE}/adminListUsers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}`, ...appCheckHeader },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'adminListUsers failed');
+  return json; // { users, nextCursor, hasMore }
+}
+
+// Delta: fetch only users updated since the last cache fetch
+async function fetchUsersDelta(since) {
+  const [idToken, appCheckHeader] = await Promise.all([auth.currentUser.getIdToken(), getAppCheckHeader()]);
+  const res = await fetch(`${FUNCTIONS_BASE}/adminListUsers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}`, ...appCheckHeader },
+    body: JSON.stringify({ since }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'adminListUsers delta failed');
+  return json; // { users, delta: true }
 }
 
 // ─── Users / Admin Page (SuperAdmin only) ─────────────────────────────────────
@@ -181,8 +215,11 @@ export default async function renderAdmin(container) {
 
   container.querySelector('#btn-signout')?.addEventListener('click', () => signOut());
 
-  // Refresh
-  document.getElementById('btn-refresh').addEventListener('click', () => loadUsers());
+  // Refresh — force bypasses cache and re-fetches from page 1
+  document.getElementById('btn-refresh').addEventListener('click', () => {
+    state.usersCache = null;
+    loadUsers(true);
+  });
 
   // Create user
   document.getElementById('form-create-user').addEventListener('submit', async (e) => {
@@ -197,11 +234,19 @@ export default async function renderAdmin(container) {
     btn.disabled = true;
     btn.textContent = 'Creating…';
     try {
-      await adminCall('adminCreateUser', { email, password, displayName, role, domains });
+      const result = await adminCall('adminCreateUser', { email, password, displayName, role, domains });
       showToast(`User ${email} created.`, 'success');
       e.target.reset();
       await initDomainBuilder(document.getElementById('new-domain-builder'), {});
-      await loadUsers();
+      // Prepend the new user to the cache and re-render (no full reload)
+      if (state.usersCache && result.uid) {
+        const newUser = { uid: result.uid, email, displayName, role, domains, ssoAuto: false, createdAt: new Date().toISOString(), lastLoginAt: null };
+        state.usersCache.users.unshift(newUser);
+        rerenderTable();
+      } else {
+        state.usersCache = null;
+        await loadUsers();
+      }
     } catch (err) {
       showToast(err.message || 'Failed to create user.', 'error');
     } finally {
@@ -227,7 +272,17 @@ export default async function renderAdmin(container) {
       await adminCall('adminSetUserPermissions', { uid, role, domains });
       showToast('Permissions updated.', 'success');
       closeModal();
-      await loadUsers();
+      // Update in cache and re-render (no full reload)
+      if (state.usersCache) {
+        const idx = state.usersCache.users.findIndex(u => u.uid === uid);
+        if (idx !== -1) {
+          state.usersCache.users[idx] = { ...state.usersCache.users[idx], role, domains, ssoAuto: false };
+          rerenderTable();
+        } else {
+          state.usersCache = null;
+          await loadUsers();
+        }
+      }
     } catch (err) {
       showToast(err.message || 'Failed to update permissions.', 'error');
     } finally {
@@ -240,100 +295,290 @@ export default async function renderAdmin(container) {
   await loadUsers();
 }
 
-// ─── Load users ───────────────────────────────────────────────────────────────
-async function loadUsers() {
+// ─── User filtering ───────────────────────────────────────────────────────────
+let _filterQuery = '';
+let _filterRole = '';
+
+function applyFilters(users) {
+  const q = _filterQuery.toLowerCase();
+  return users.filter(u => {
+    const matchesText = !q ||
+      (u.displayName || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q);
+    const matchesRole = !_filterRole || u.role === _filterRole;
+    return matchesText && matchesRole;
+  });
+}
+
+// ─── Render user rows ─────────────────────────────────────────────────────────
+function renderUserRows(users) {
+  return users.map((u) => `
+    <tr>
+      <td>
+        <div class="user-cell">
+          <div class="user-avatar-circle user-avatar-circle--sm" style="background:${avatarColor(u.displayName || u.email)}">
+            ${esc(initials(u.displayName || u.email))}
+          </div>
+          <div>
+            <div class="user-cell__name">${esc(u.displayName || '—')}</div>
+            <div class="user-cell__email">${esc(u.email)}</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="role-chip role-chip--${esc(u.role?.toLowerCase() || 'user')}">${esc(u.role)}</span>${u.ssoAuto ? ' <span class="role-chip role-chip--pending">Pending</span>' : ''}</td>
+      <td class="text-muted">${Object.keys(u.domains || {}).length} domain(s)</td>
+      <td class="text-muted text-sm">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-PH') : '—'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn ${u.ssoAuto ? 'btn--primary' : 'btn--ghost'} btn--sm btn-edit-perms"
+            data-uid="${esc(u.uid)}"
+            data-role="${esc(u.role)}"
+            data-domains="${esc(JSON.stringify(u.domains || {}))}">
+            ${u.ssoAuto ? 'Assign Role' : 'Edit'}
+          </button>
+          ${u.uid !== state.sessionUser.uid ? `
+          <button class="btn btn--danger btn--sm btn-delete-user" data-uid="${esc(u.uid)}" data-email="${esc(u.email)}">
+            Delete
+          </button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function attachRowHandlers(wrap) {
+  wrap.querySelectorAll('.btn-edit-perms').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      document.getElementById('modal-uid').value = btn.dataset.uid;
+      document.getElementById('modal-role').value = btn.dataset.role;
+      await initDomainBuilder(
+        document.getElementById('modal-domain-builder'),
+        JSON.parse(btn.dataset.domains || '{}')
+      );
+      openModal();
+    });
+  });
+
+  wrap.querySelectorAll('.btn-delete-user').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`Delete user ${btn.dataset.email}? This cannot be undone.`)) return;
+      try {
+        await adminCall('adminDeleteUser', { uid: btn.dataset.uid });
+        showToast('User deleted.', 'success');
+        // Remove from cache and re-render
+        if (state.usersCache) {
+          state.usersCache.users = state.usersCache.users.filter(u => u.uid !== btn.dataset.uid);
+        }
+        rerenderTable();
+      } catch (err) {
+        showToast(err.message || 'Failed to delete user.', 'error');
+      }
+    });
+  });
+}
+
+function rerenderTable() {
+  const wrap = document.getElementById('user-list-wrap');
+  if (!wrap || !state.usersCache) return;
+  const filtered = applyFilters(state.usersCache.users);
+  const tbody = wrap.querySelector('tbody');
+  if (tbody) {
+    tbody.innerHTML = renderUserRows(filtered);
+    attachRowHandlers(wrap);
+    updateUserCount(filtered.length);
+  }
+}
+
+function updateUserCount(n) {
+  const el = document.getElementById('users-count');
+  if (el) el.textContent = `${n} user${n !== 1 ? 's' : ''}`;
+}
+
+// ─── Intersection observer for scroll-based page loading ─────────────────────
+let _scrollObserver = null;
+function setupScrollObserver() {
+  const sentinel = document.getElementById('users-scroll-sentinel');
+  if (!sentinel) return;
+  if (_scrollObserver) _scrollObserver.disconnect();
+  _scrollObserver = new IntersectionObserver(async (entries) => {
+    if (!entries[0].isIntersecting) return;
+    if (!state.usersCache || state.usersCache.allLoaded) return;
+    await loadMoreUsers();
+  }, { threshold: 0.1 });
+  _scrollObserver.observe(sentinel);
+}
+
+// ─── Load users (initial + reset) ────────────────────────────────────────────
+async function loadUsers(forceRefresh = false) {
   const wrap = document.getElementById('user-list-wrap');
   if (!wrap) return;
+
+  const now = Date.now();
+  const cacheValid = state.usersCache &&
+    !forceRefresh &&
+    (now - state.usersCache.fetchedAt) < CACHE_TTL_MS;
+
+  if (cacheValid) {
+    // Serve immediately from cache; do a background delta to catch any changes
+    renderFullTable(wrap);
+    backgroundDeltaRefresh();
+    return;
+  }
+
+  // Fresh load
   wrap.innerHTML = '<div class="table-loading">Loading users…</div>';
 
   try {
-    const res = await adminCall('adminListUsers');
-    const users = res.users;
-
-    if (!users.length) {
-      wrap.innerHTML = '<div class="table-empty">No users found.</div>';
-      return;
-    }
-
-    const rows = users.map((u) => `
-      <tr>
-        <td>
-          <div class="user-cell">
-            <div class="user-avatar-circle user-avatar-circle--sm" style="background:${avatarColor(u.displayName || u.email)}">
-              ${esc(initials(u.displayName || u.email))}
-            </div>
-            <div>
-              <div class="user-cell__name">${esc(u.displayName || '—')}</div>
-              <div class="user-cell__email">${esc(u.email)}</div>
-            </div>
-          </div>
-        </td>
-        <td><span class="role-chip role-chip--${esc(u.role?.toLowerCase() || 'user')}">${esc(u.role)}</span>${u.ssoAuto ? ' <span class="role-chip role-chip--pending">Pending</span>' : ''}</td>
-        <td class="text-muted">${Object.keys(u.domains || {}).length} domain(s)</td>
-        <td class="text-muted text-sm">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-PH') : '—'}</td>
-        <td>
-          <div class="action-btns">
-            <button class="btn ${u.ssoAuto ? 'btn--primary' : 'btn--ghost'} btn--sm btn-edit-perms"
-              data-uid="${esc(u.uid)}"
-              data-role="${esc(u.role)}"
-              data-domains="${esc(JSON.stringify(u.domains || {}))}">
-              ${u.ssoAuto ? 'Assign Role' : 'Edit'}
-            </button>
-            ${u.uid !== state.sessionUser.uid ? `
-            <button class="btn btn--danger btn--sm btn-delete-user" data-uid="${esc(u.uid)}" data-email="${esc(u.email)}">
-              Delete
-            </button>` : ''}
-          </div>
-        </td>
-      </tr>
-    `).join('');
-
-    wrap.innerHTML = `
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Role</th>
-              <th>Domain Access</th>
-              <th>Created</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    `;
-
-    // Edit permissions
-    wrap.querySelectorAll('.btn-edit-perms').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        document.getElementById('modal-uid').value = btn.dataset.uid;
-        document.getElementById('modal-role').value = btn.dataset.role;
-        await initDomainBuilder(
-          document.getElementById('modal-domain-builder'),
-          JSON.parse(btn.dataset.domains || '{}')
-        );
-        openModal();
-      });
-    });
-
-    // Delete user
-    wrap.querySelectorAll('.btn-delete-user').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        if (!confirm(`Delete user ${btn.dataset.email}? This cannot be undone.`)) return;
-        try {
-          await adminCall('adminDeleteUser', { uid: btn.dataset.uid });
-          showToast('User deleted.', 'success');
-          await loadUsers();
-        } catch (err) {
-          showToast(err.message || 'Failed to delete user.', 'error');
-        }
-      });
-    });
-
+    const result = await fetchUsersPage(null);
+    state.usersCache = {
+      users: result.users,
+      nextCursor: result.nextCursor,
+      allLoaded: !result.hasMore,
+      fetchedAt: Date.now(),
+    };
+    renderFullTable(wrap);
+    setupScrollObserver();
   } catch (err) {
     wrap.innerHTML = `<div class="table-empty text-danger">Failed to load users: ${esc(err.message)}</div>`;
+  }
+}
+
+// ─── Append next page on scroll ──────────────────────────────────────────────
+async function loadMoreUsers() {
+  if (!state.usersCache || state.usersCache.allLoaded) return;
+  const sentinel = document.getElementById('users-scroll-sentinel');
+  if (sentinel) sentinel.innerHTML = '<span style="font-size:.8rem;color:#6b7280;">Loading more…</span>';
+
+  try {
+    const result = await fetchUsersPage(state.usersCache.nextCursor);
+    state.usersCache.users.push(...result.users);
+    state.usersCache.nextCursor = result.nextCursor;
+    state.usersCache.allLoaded = !result.hasMore;
+
+    // Append new rows to existing tbody
+    const wrap = document.getElementById('user-list-wrap');
+    const tbody = wrap?.querySelector('tbody');
+    if (tbody) {
+      const newRows = document.createElement('tbody');
+      newRows.innerHTML = renderUserRows(applyFilters(result.users));
+      newRows.querySelectorAll('tr').forEach(tr => tbody.appendChild(tr));
+      attachRowHandlers(wrap);
+      updateUserCount(applyFilters(state.usersCache.users).length);
+    }
+
+    if (state.usersCache.allLoaded && sentinel) {
+      sentinel.innerHTML = '';
+      if (_scrollObserver) _scrollObserver.disconnect();
+    } else if (sentinel) {
+      sentinel.innerHTML = '';
+    }
+  } catch (err) {
+    showToast('Failed to load more users: ' + err.message, 'error');
+    if (sentinel) sentinel.innerHTML = '';
+  }
+}
+
+// ─── Delta refresh (background, only fetches changed users) ──────────────────
+async function backgroundDeltaRefresh() {
+  if (!state.usersCache) return;
+  try {
+    const since = new Date(state.usersCache.fetchedAt).toISOString();
+    const result = await fetchUsersDelta(since);
+    if (!result.users.length) return;
+
+    // Merge: update existing entries or prepend new ones
+    const updatedUids = new Set(result.users.map(u => u.uid));
+    state.usersCache.users = [
+      ...result.users,
+      ...state.usersCache.users.filter(u => !updatedUids.has(u.uid)),
+    ];
+    state.usersCache.fetchedAt = Date.now();
+    rerenderTable();
+    console.log(`[users] Delta refresh: ${result.users.length} update(s)`);
+  } catch (err) {
+    console.warn('[users] Delta refresh failed (silent):', err.message);
+  }
+}
+
+// ─── Full table render ────────────────────────────────────────────────────────
+function renderFullTable(wrap) {
+  if (!state.usersCache) return;
+  const filtered = applyFilters(state.usersCache.users);
+
+  if (!state.usersCache.users.length) {
+    wrap.innerHTML = '<div class="table-empty">No users found.</div>';
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-color);flex-wrap:wrap;">
+      <input id="user-filter-search" type="text" class="input" placeholder="Search name or email…"
+        value="${esc(_filterQuery)}" style="max-width:240px;" />
+      <select id="user-filter-role" class="input" style="max-width:160px;">
+        <option value="">All roles</option>
+        <option value="SuperAdmin" ${_filterRole === 'SuperAdmin' ? 'selected' : ''}>SuperAdmin</option>
+        <option value="Admin" ${_filterRole === 'Admin' ? 'selected' : ''}>Admin</option>
+        <option value="User" ${_filterRole === 'User' ? 'selected' : ''}>User</option>
+      </select>
+      <span id="users-count" style="font-size:.8rem;color:var(--text-secondary);margin-left:auto;"></span>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>Domain Access</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${renderUserRows(filtered)}</tbody>
+      </table>
+    </div>
+    <div id="users-scroll-sentinel" style="height:40px;display:flex;align-items:center;justify-content:center;"
+      aria-hidden="true">
+      ${state.usersCache.allLoaded ? '' : '<span style="font-size:.8rem;color:#6b7280;">Scroll for more…</span>'}
+    </div>
+  `;
+
+  updateUserCount(filtered.length);
+  attachRowHandlers(wrap);
+  setupScrollObserver();
+
+  // Filter event listeners
+  wrap.querySelector('#user-filter-search')?.addEventListener('input', (e) => {
+    _filterQuery = e.target.value;
+    if (!state.usersCache.allLoaded) {
+      // Cache not fully loaded — show a note
+      const count = document.getElementById('users-count');
+      if (count) count.textContent = 'Loading all users for search…';
+      // Kick off background load of remaining pages
+      loadAllRemainingPages().then(() => rerenderTable());
+    } else {
+      rerenderTable();
+    }
+  });
+
+  wrap.querySelector('#user-filter-role')?.addEventListener('change', (e) => {
+    _filterRole = e.target.value;
+    rerenderTable();
+  });
+}
+
+// ─── Load all remaining pages (triggered when user searches with partial cache) 
+async function loadAllRemainingPages() {
+  if (!state.usersCache || state.usersCache.allLoaded) return;
+  while (!state.usersCache.allLoaded) {
+    try {
+      const result = await fetchUsersPage(state.usersCache.nextCursor);
+      state.usersCache.users.push(...result.users);
+      state.usersCache.nextCursor = result.nextCursor;
+      state.usersCache.allLoaded = !result.hasMore;
+    } catch (err) {
+      console.warn('[users] loadAllRemainingPages failed:', err.message);
+      break;
+    }
   }
 }
 
