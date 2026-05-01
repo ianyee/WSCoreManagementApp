@@ -71,10 +71,11 @@ async function fetchUsersDelta(since) {
   return json; // { users, delta: true }
 }
 
-// ─── Users / Admin Page (SuperAdmin only) ─────────────────────────────────────
+// ─── Users / Admin Page ───────────────────────────────────────────────────────
 export default async function renderAdmin(container) {
-  if (state.sessionUser?.role !== 'SuperAdmin') {
-    container.innerHTML = '<div class="content-area"><p class="text-danger">Access denied. SuperAdmin role required.</p></div>';
+  const role = state.sessionUser?.role;
+  if (role !== 'SuperAdmin' && role !== 'Admin') {
+    container.innerHTML = '<div class="content-area"><p class="text-danger">Access denied. Admin role required.</p></div>';
     return;
   }
 
@@ -110,10 +111,13 @@ export default async function renderAdmin(container) {
 
           <!-- Create user card -->
           <div class="card mb-24">
-            <div class="card-header">
-              <h2 class="card-title">Create New User</h2>
+            <div class="card-header" id="create-user-header" style="cursor:pointer;user-select:none;" aria-expanded="false" aria-controls="create-user-body">
+              <h2 class="card-title">
+                <svg id="create-user-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>
+                Create New User
+              </h2>
             </div>
-            <div class="card-body">
+            <div class="card-body" id="create-user-body" hidden>
               <form id="form-create-user" class="form-grid" novalidate>
                 <div class="form-field">
                   <label class="form-label" for="new-email">Email address</label>
@@ -179,8 +183,12 @@ export default async function renderAdmin(container) {
         </div>
         <div class="modal-body">
           <input type="hidden" id="modal-uid" />
-          ${state.sessionUser?.role === 'SuperAdmin' ? `
           <div class="form-field">
+            <label class="form-label" for="modal-displayname">Display name</label>
+            <input id="modal-displayname" type="text" class="input" placeholder="Juan dela Cruz" />
+          </div>
+          ${state.sessionUser?.role === 'SuperAdmin' ? `
+          <div class="form-field mt-16">
             <label class="form-label" for="modal-role">Global role</label>
             <select id="modal-role" class="input">
               <option value="User">User</option>
@@ -205,6 +213,17 @@ export default async function renderAdmin(container) {
   const sidebar = container.querySelector('.sidebar');
   document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
     sidebar.classList.toggle('sidebar--collapsed');
+  });
+
+  // Collapsible "Create New User" card
+  document.getElementById('create-user-header')?.addEventListener('click', () => {
+    const body = document.getElementById('create-user-body');
+    const chevron = document.getElementById('create-user-chevron');
+    const header = document.getElementById('create-user-header');
+    const open = body.hasAttribute('hidden');
+    body.toggleAttribute('hidden', !open);
+    chevron.style.transform = open ? 'rotate(180deg)' : '';
+    header.setAttribute('aria-expanded', String(open));
   });
 
   // Sidebar nav
@@ -266,19 +285,20 @@ export default async function renderAdmin(container) {
   document.getElementById('btn-modal-save').addEventListener('click', async () => {
     const uid = document.getElementById('modal-uid').value;
     const role = document.getElementById('modal-role').value;
+    const displayName = document.getElementById('modal-displayname').value.trim();
     const domains = readDomainBuilder(document.getElementById('modal-domain-builder'));
     const btn = document.getElementById('btn-modal-save');
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {
-      await adminCall('adminSetUserPermissions', { uid, role, domains });
+      await adminCall('adminSetUserPermissions', { uid, role, displayName, domains });
       showToast('Permissions updated.', 'success');
       closeModal();
       // Update in cache and re-render (no full reload)
       if (state.usersCache) {
         const idx = state.usersCache.users.findIndex(u => u.uid === uid);
         if (idx !== -1) {
-          state.usersCache.users[idx] = { ...state.usersCache.users[idx], role, domains, ssoAuto: false };
+          state.usersCache.users[idx] = { ...state.usersCache.users[idx], role, domains, displayName, ssoAuto: false };
           rerenderTable();
         } else {
           state.usersCache = null;
@@ -300,6 +320,7 @@ export default async function renderAdmin(container) {
 // ─── User filtering ───────────────────────────────────────────────────────────
 let _filterQuery = '';
 let _filterRole = '';
+let _filterDomain = '';
 
 function applyFilters(users) {
   const q = _filterQuery.toLowerCase();
@@ -308,8 +329,16 @@ function applyFilters(users) {
       (u.displayName || '').toLowerCase().includes(q) ||
       (u.email || '').toLowerCase().includes(q);
     const matchesRole = !_filterRole || u.role === _filterRole;
-    return matchesText && matchesRole;
+    const matchesDomain = !_filterDomain || Object.keys(u.domains || {}).includes(_filterDomain);
+    return matchesText && matchesRole && matchesDomain;
   });
+}
+
+// Collect unique domain keys across all loaded users
+function allUniqueDomains(users) {
+  const set = new Set();
+  users.forEach(u => Object.keys(u.domains || {}).forEach(d => set.add(d)));
+  return [...set].sort();
 }
 
 // ─── Render user rows ─────────────────────────────────────────────────────────
@@ -328,13 +357,20 @@ function renderUserRows(users) {
         </div>
       </td>
       <td><span class="role-chip role-chip--${esc(u.role?.toLowerCase() || 'user')}">${esc(u.role)}</span>${u.ssoAuto ? ' <span class="role-chip role-chip--pending">Pending</span>' : ''}</td>
-      <td class="text-muted">${Object.keys(u.domains || {}).length} domain(s)</td>
+      <td>
+        <div class="domain-tags">
+          ${Object.keys(u.domains || {}).length
+            ? Object.keys(u.domains).map(d => `<span class="domain-tag">${esc(d)}</span>`).join('')
+            : '<span class="text-muted" style="font-size:.8rem;">—</span>'}
+        </div>
+      </td>
       <td class="text-muted text-sm">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-PH') : '—'}</td>
       <td>
         <div class="action-btns">
           <button class="btn ${u.ssoAuto ? 'btn--primary' : 'btn--ghost'} btn--sm btn-edit-perms"
             data-uid="${esc(u.uid)}"
             data-role="${esc(u.role)}"
+            data-displayname="${esc(u.displayName || '')}"
             data-domains="${esc(JSON.stringify(u.domains || {}))}">
             ${u.ssoAuto ? 'Assign Role' : 'Edit'}
           </button>
@@ -352,6 +388,7 @@ function attachRowHandlers(wrap) {
   wrap.querySelectorAll('.btn-edit-perms').forEach((btn) => {
     btn.addEventListener('click', async () => {
       document.getElementById('modal-uid').value = btn.dataset.uid;
+      document.getElementById('modal-displayname').value = btn.dataset.displayname || '';
       // For Admin: the role hidden input preserves the user's current role (Admin cannot change it)
       const roleEl = document.getElementById('modal-role');
       if (roleEl) roleEl.value = btn.dataset.role;
@@ -524,6 +561,12 @@ function renderFullTable(wrap) {
         <option value="Admin" ${_filterRole === 'Admin' ? 'selected' : ''}>Admin</option>
         <option value="User" ${_filterRole === 'User' ? 'selected' : ''}>User</option>
       </select>
+      <select id="user-filter-domain" class="input" style="max-width:220px;">
+        <option value="">All domains</option>
+        ${allUniqueDomains(state.usersCache.users).map(d =>
+          `<option value="${esc(d)}" ${_filterDomain === d ? 'selected' : ''}>${esc(d)}</option>`
+        ).join('')}
+      </select>
       <span id="users-count" style="font-size:.8rem;color:var(--text-secondary);margin-left:auto;"></span>
     </div>
     <div class="table-wrap">
@@ -566,6 +609,11 @@ function renderFullTable(wrap) {
 
   wrap.querySelector('#user-filter-role')?.addEventListener('change', (e) => {
     _filterRole = e.target.value;
+    rerenderTable();
+  });
+
+  wrap.querySelector('#user-filter-domain')?.addEventListener('change', (e) => {
+    _filterDomain = e.target.value;
     rerenderTable();
   });
 }

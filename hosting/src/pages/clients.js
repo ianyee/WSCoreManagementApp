@@ -40,86 +40,71 @@ export default async function renderClients(container) {
         </header>
 
         <div class="content-area">
-          <div class="page-heading" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
-            <div>
-              <h1 class="page-heading__title">Client Registry</h1>
-              <p class="page-heading__sub">Manage companies shared across all Workscale apps. Client IDs (C-XXXX) are permanent.</p>
-            </div>
-            <button id="btn-open-add-client" class="btn btn--primary">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Add Client
-            </button>
+          <div class="page-heading">
+            <h1 class="page-heading__title">Client Registry</h1>
+            <p class="page-heading__sub">Manage companies shared across all Workscale apps. Client IDs (C-XXXX) are permanent.</p>
           </div>
 
-          <!-- Filter bar -->
-          <div class="card mb-24" style="padding:16px 20px;">
-            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-              <input id="filter-search" type="text" class="input" placeholder="Search name or industry…" style="max-width:280px;" />
-              <select id="filter-status" class="input" style="max-width:160px;">
-                <option value="">All statuses</option>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </select>
+          <!-- Add client card (collapsible) -->
+          <div class="card mb-24">
+            <div class="card-header" id="add-client-header" style="cursor:pointer;user-select:none;" aria-expanded="false" aria-controls="add-client-body">
+              <h2 class="card-title">
+                <svg id="add-client-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>
+                Add New Client
+              </h2>
+            </div>
+            <div class="card-body" id="add-client-body" hidden>
+              <form id="form-add-client" class="form-grid" novalidate>
+                <div class="form-field">
+                  <label class="form-label" for="add-clientName">Company Name *</label>
+                  <input id="add-clientName" type="text" class="input" placeholder="e.g. Acme Corp." required />
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="add-industry">Industry</label>
+                  <input id="add-industry" type="text" class="input" placeholder="e.g. Logistics, Retail…" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="add-contactPerson">Contact Person</label>
+                  <input id="add-contactPerson" type="text" class="input" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="add-contactNumber">Contact Number</label>
+                  <input id="add-contactNumber" type="text" class="input" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="add-email">Email</label>
+                  <input id="add-email" type="email" class="input" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="add-status">Status</label>
+                  <select id="add-status" class="input">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+                <div class="form-field form-field--full">
+                  <button type="submit" id="btn-add-client-save" class="btn btn--primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add Client
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Client table (filter bar + list rendered dynamically) -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">All Clients</h2>
               <button id="btn-refresh-clients" class="btn btn--ghost btn--sm">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 Refresh
               </button>
-              <span id="clients-count" style="font-size:.8rem;color:var(--text-secondary);margin-left:auto;"></span>
             </div>
-          </div>
-
-          <!-- Client table -->
-          <div class="card">
             <div id="clients-list-wrap">
               <div class="table-loading">Loading…</div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Add Client Modal -->
-    <div id="modal-add-client" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-add-client-title">
-      <div class="modal-backdrop" id="modal-add-client-backdrop"></div>
-      <div class="modal-box">
-        <div class="modal-header">
-          <h3 class="modal-title" id="modal-add-client-title">Add New Client</h3>
-          <button class="modal-close" id="modal-add-client-close" aria-label="Close">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-field">
-            <label class="form-label" for="add-clientName">Company Name *</label>
-            <input id="add-clientName" type="text" class="input" placeholder="e.g. Acme Corp." required />
-          </div>
-          <div class="form-field mt-16">
-            <label class="form-label" for="add-industry">Industry</label>
-            <input id="add-industry" type="text" class="input" placeholder="e.g. Logistics, Retail…" />
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
-            <div class="form-field">
-              <label class="form-label" for="add-contactPerson">Contact Person</label>
-              <input id="add-contactPerson" type="text" class="input" />
-            </div>
-            <div class="form-field">
-              <label class="form-label" for="add-contactNumber">Contact Number</label>
-              <input id="add-contactNumber" type="text" class="input" />
-            </div>
-          </div>
-          <div class="form-field mt-16">
-            <label class="form-label" for="add-email">Email</label>
-            <input id="add-email" type="email" class="input" />
-          </div>
-          <div class="form-field mt-16">
-            <label class="form-label" for="add-status">Status</label>
-            <select id="add-status" class="input">
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button id="btn-add-client-cancel" class="btn btn--ghost">Cancel</button>
-          <button id="btn-add-client-save" class="btn btn--primary">Add Client</button>
         </div>
       </div>
     </div>
@@ -187,27 +172,24 @@ export default async function renderClients(container) {
 
   // ─── Filters ────────────────────────────────────────────────────────────────
   let _allClients = [];
-  document.getElementById('filter-search').addEventListener('input', () => renderTable(_allClients));
-  document.getElementById('filter-status').addEventListener('change', () => renderTable(_allClients));
+  let _filterSearch = '';
+  let _filterStatus = '';
   document.getElementById('btn-refresh-clients').addEventListener('click', loadClients);
 
-  // ─── Add modal ──────────────────────────────────────────────────────────────
-  document.getElementById('btn-open-add-client').addEventListener('click', () => {
-    // Reset form
-    ['add-clientName','add-industry','add-contactPerson','add-contactNumber','add-email'].forEach(id => {
-      document.getElementById(id).value = '';
-    });
-    document.getElementById('add-status').value = 'Active';
-    document.getElementById('modal-add-client').removeAttribute('hidden');
-    document.getElementById('add-clientName').focus();
-  });
-  ['modal-add-client-close','btn-add-client-cancel','modal-add-client-backdrop'].forEach(id => {
-    document.getElementById(id)?.addEventListener('click', () => {
-      document.getElementById('modal-add-client').setAttribute('hidden', '');
-    });
+  // ─── Collapsible "Add New Client" card ──────────────────────────────────────
+  document.getElementById('add-client-header')?.addEventListener('click', () => {
+    const body    = document.getElementById('add-client-body');
+    const chevron = document.getElementById('add-client-chevron');
+    const header  = document.getElementById('add-client-header');
+    const open = body.hasAttribute('hidden');
+    body.toggleAttribute('hidden', !open);
+    chevron.style.transform = open ? 'rotate(180deg)' : '';
+    header.setAttribute('aria-expanded', String(open));
   });
 
-  document.getElementById('btn-add-client-save').addEventListener('click', async () => {
+  // ─── Add client form ─────────────────────────────────────────────────────────
+  document.getElementById('form-add-client').addEventListener('submit', async (e) => {
+    e.preventDefault();
     const clientName    = document.getElementById('add-clientName').value.trim();
     const industry      = document.getElementById('add-industry').value.trim();
     const contactPerson = document.getElementById('add-contactPerson').value.trim();
@@ -218,7 +200,8 @@ export default async function renderClients(container) {
     if (!clientName) { showToast('Company name is required.', 'error'); return; }
 
     const btn = document.getElementById('btn-add-client-save');
-    btn.disabled = true; btn.textContent = 'Adding…';
+    btn.disabled = true;
+    btn.innerHTML = 'Adding…';
     try {
       const clientId = await runTransaction(db, async (tx) => {
         const counterRef = doc(db, 'counters', 'clients');
@@ -242,12 +225,20 @@ export default async function renderClients(container) {
         return newId;
       });
       showToast(`Client ${clientId} added.`, 'success');
-      document.getElementById('modal-add-client').setAttribute('hidden', '');
+      document.getElementById('form-add-client').reset();
+      // Collapse the card after successful add
+      const body    = document.getElementById('add-client-body');
+      const chevron = document.getElementById('add-client-chevron');
+      const header  = document.getElementById('add-client-header');
+      body.setAttribute('hidden', '');
+      chevron.style.transform = '';
+      header.setAttribute('aria-expanded', 'false');
       await loadClients();
     } catch (err) {
       showToast(err.message || 'Failed to add client.', 'error');
     } finally {
-      btn.disabled = false; btn.textContent = 'Add Client';
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Client`;
     }
   });
 
@@ -333,31 +324,46 @@ export default async function renderClients(container) {
     const wrap = document.getElementById('clients-list-wrap');
     if (!wrap) return;
 
-    const searchVal  = (document.getElementById('filter-search')?.value  || '').toLowerCase().trim();
-    const statusVal  =  document.getElementById('filter-status')?.value  || '';
-
     const filtered = allClients.filter(c => {
-      const matchSearch = !searchVal ||
-        (c.clientName || '').toLowerCase().includes(searchVal) ||
-        (c.industry   || '').toLowerCase().includes(searchVal) ||
-        (c.contactPerson || '').toLowerCase().includes(searchVal);
-      const matchStatus = !statusVal || c.status === statusVal;
+      const matchSearch = !_filterSearch ||
+        (c.clientName || '').toLowerCase().includes(_filterSearch) ||
+        (c.industry   || '').toLowerCase().includes(_filterSearch) ||
+        (c.contactPerson || '').toLowerCase().includes(_filterSearch);
+      const matchStatus = !_filterStatus || c.status === _filterStatus;
       return matchSearch && matchStatus;
     });
 
-    const countEl = document.getElementById('clients-count');
-    if (countEl) {
-      countEl.textContent = filtered.length !== allClients.length
-        ? `${filtered.length} of ${allClients.length} clients`
-        : `${allClients.length} client${allClients.length !== 1 ? 's' : ''}`;
-    }
+    const countText = filtered.length !== allClients.length
+      ? `${filtered.length} of ${allClients.length} client${allClients.length !== 1 ? 's' : ''}`
+      : `${allClients.length} client${allClients.length !== 1 ? 's' : ''}`;
 
     if (!filtered.length) {
-      wrap.innerHTML = `<div class="table-empty">${allClients.length ? 'No clients match the current filters.' : 'No clients registered yet.'}</div>`;
+      wrap.innerHTML = `
+        <div style="display:flex;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-color);flex-wrap:wrap;">
+          <input id="filter-search" type="text" class="input" placeholder="Search name or industry…" value="${esc(_filterSearch)}" style="max-width:280px;" />
+          <select id="filter-status" class="input" style="max-width:160px;">
+            <option value="">All statuses</option>
+            <option value="Active" ${_filterStatus === 'Active' ? 'selected' : ''}>Active</option>
+            <option value="Inactive" ${_filterStatus === 'Inactive' ? 'selected' : ''}>Inactive</option>
+          </select>
+          <span style="font-size:.8rem;color:var(--text-secondary);margin-left:auto;">${countText}</span>
+        </div>
+        <div class="table-empty">${allClients.length ? 'No clients match the current filters.' : 'No clients registered yet.'}</div>
+      `;
+      attachFilterListeners(wrap, allClients);
       return;
     }
 
     wrap.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-color);flex-wrap:wrap;">
+        <input id="filter-search" type="text" class="input" placeholder="Search name or industry…" value="${esc(_filterSearch)}" style="max-width:280px;" />
+        <select id="filter-status" class="input" style="max-width:160px;">
+          <option value="">All statuses</option>
+          <option value="Active" ${_filterStatus === 'Active' ? 'selected' : ''}>Active</option>
+          <option value="Inactive" ${_filterStatus === 'Inactive' ? 'selected' : ''}>Inactive</option>
+        </select>
+        <span style="font-size:.8rem;color:var(--text-secondary);margin-left:auto;">${countText}</span>
+      </div>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -397,8 +403,20 @@ export default async function renderClients(container) {
       </div>
     `;
 
+    attachFilterListeners(wrap, allClients);
     wrap.querySelectorAll('.btn-edit-client').forEach(btn => {
       btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+    });
+  }
+
+  function attachFilterListeners(wrap, allClients) {
+    wrap.querySelector('#filter-search')?.addEventListener('input', (e) => {
+      _filterSearch = e.target.value.toLowerCase().trim();
+      renderTable(allClients);
+    });
+    wrap.querySelector('#filter-status')?.addEventListener('change', (e) => {
+      _filterStatus = e.target.value;
+      renderTable(allClients);
     });
   }
 }

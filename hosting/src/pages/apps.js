@@ -9,6 +9,7 @@ export default async function renderApps(container) {
   const email = user?.email || '';
   const role  = user?.role  || '';
   const isSuperAdmin = role === 'SuperAdmin';
+  const isAdmin = role === 'Admin';
 
   // Load registered domains from Firestore
   let registeredDomains = [];
@@ -80,11 +81,11 @@ export default async function renderApps(container) {
           ${emptyState}
         </div>
 
-        ${isSuperAdmin ? `
+        ${isSuperAdmin || isAdmin ? `
           <div class="apps-manage-strip">
             <div class="apps-manage-strip__text">
-              <strong>SuperAdmin Portal</strong>
-              <span>Manage users, roles, permissions and audit logs.</span>
+              <strong>${isSuperAdmin ? 'SuperAdmin Portal' : 'Admin Portal'}</strong>
+              <span>Manage users, roles, permissions${isSuperAdmin ? ' and audit logs' : ''}.</span>
             </div>
             <button id="btn-apps-manage" class="apps-btn apps-btn--primary">Manage</button>
           </div>

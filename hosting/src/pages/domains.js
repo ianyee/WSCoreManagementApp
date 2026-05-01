@@ -54,12 +54,15 @@ export default async function renderDomains(container) {
             <p class="page-heading__sub">Configure supported applications and the roles allowed in each domain.</p>
           </div>
 
-          <!-- Add domain card -->
+          <!-- Add domain card (collapsible) -->
           <div class="card mb-24">
-            <div class="card-header">
-              <h2 class="card-title">Register New Domain</h2>
+            <div class="card-header" id="register-domain-header" style="cursor:pointer;user-select:none;" aria-expanded="false" aria-controls="register-domain-body">
+              <h2 class="card-title">
+                <svg id="register-domain-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>
+                Register New Domain
+              </h2>
             </div>
-            <div class="card-body">
+            <div class="card-body" id="register-domain-body" hidden>
               <form id="form-add-domain" class="form-grid" novalidate>
                 <div class="form-field">
                   <label class="form-label" for="d-domain">Domain *</label>
@@ -97,6 +100,13 @@ export default async function renderDomains(container) {
                   <label class="form-label">Allowed roles *</label>
                   <p style="font-size:.78rem;color:#6b7280;margin:0 0 8px;">One role per line. The first role is the default assigned to new users.</p>
                   <textarea id="d-roles" class="input" rows="4" placeholder="Recruiter&#10;Manager&#10;Admin" style="resize:vertical;font-family:monospace;"></textarea>
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="d-type">Domain type</label>
+                  <select id="d-type" class="input">
+                    <option value="General">General — Admins can assign</option>
+                    <option value="Restricted">Restricted — SuperAdmin only</option>
+                  </select>
                 </div>
                 <div class="form-field form-field--full">
                   <button type="submit" id="btn-add-domain" class="btn btn--primary">
@@ -164,6 +174,13 @@ export default async function renderDomains(container) {
             <label class="form-label" for="modal-d-roles">Allowed roles (one per line, first = default)</label>
             <textarea id="modal-d-roles" class="input" rows="4" style="resize:vertical;font-family:monospace;"></textarea>
           </div>
+          <div class="form-field mt-16">
+            <label class="form-label" for="modal-d-type">Domain type</label>
+            <select id="modal-d-type" class="input">
+              <option value="General">General — Admins can assign</option>
+              <option value="Restricted">Restricted — SuperAdmin only</option>
+            </select>
+          </div>
         </div>
         <div class="modal-footer">
           <button id="btn-modal-domain-cancel" class="btn btn--ghost">Cancel</button>
@@ -183,6 +200,17 @@ export default async function renderDomains(container) {
   });
   container.querySelector('#btn-signout')?.addEventListener('click', () => signOut());
 
+  // Collapsible "Register New Domain" card
+  document.getElementById('register-domain-header')?.addEventListener('click', () => {
+    const body    = document.getElementById('register-domain-body');
+    const chevron = document.getElementById('register-domain-chevron');
+    const header  = document.getElementById('register-domain-header');
+    const open = body.hasAttribute('hidden');
+    body.toggleAttribute('hidden', !open);
+    chevron.style.transform = open ? 'rotate(180deg)' : '';
+    header.setAttribute('aria-expanded', String(open));
+  });
+
   // Logo preview on add form
   wireLogoPreview('d-logo', 'd-logo-preview');
   wireLogoPreview('modal-d-logo', 'modal-d-logo-preview');
@@ -197,6 +225,7 @@ export default async function renderDomains(container) {
     const logo      = document.getElementById('d-logo').value;
     const color     = document.getElementById('d-color').value;
     const rolesRaw  = document.getElementById('d-roles').value.trim();
+    const type      = document.getElementById('d-type').value;
 
     if (!domainKey || !name || !url) { showToast('Domain, name and URL are required.', 'error'); return; }
     if (!/^https?:\/\//.test(url)) { showToast('URL must start with https://', 'error'); return; }
@@ -208,12 +237,13 @@ export default async function renderDomains(container) {
     try {
       await setDoc(doc(db, 'app_domains', domainKey), {
         domain: domainKey, name, url, description: desc, logo, color,
-        roles, defaultRole: roles[0], updatedAt: serverTimestamp(),
+        roles, defaultRole: roles[0], type, updatedAt: serverTimestamp(),
       });
       showToast(`Domain ${domainKey} registered.`, 'success');
       e.target.reset();
       document.getElementById('d-logo-preview').style.display = 'none';
       document.getElementById('d-color').value = '#6366f1';
+      document.getElementById('d-type').value = 'General';
       await loadDomains();
     } catch (err) {
       showToast(err.message || 'Failed to register domain.', 'error');
@@ -242,6 +272,7 @@ export default async function renderDomains(container) {
     const logo      = document.getElementById('modal-d-logo').value;
     const color     = document.getElementById('modal-d-color').value;
     const rolesRaw  = document.getElementById('modal-d-roles').value.trim();
+    const type      = document.getElementById('modal-d-type').value;
     const roles     = rolesRaw.split('\n').map(r => r.trim()).filter(Boolean);
 
     if (!name || !url || !roles.length) { showToast('Name, URL and at least one role are required.', 'error'); return; }
@@ -251,7 +282,7 @@ export default async function renderDomains(container) {
     try {
       await setDoc(doc(db, 'app_domains', domainKey), {
         domain: domainKey, name, url, description: desc, logo, color,
-        roles, defaultRole: roles[0], updatedAt: serverTimestamp(),
+        roles, defaultRole: roles[0], type, updatedAt: serverTimestamp(),
       }, { merge: true });
       showToast('Domain updated.', 'success');
       document.getElementById('modal-domain').setAttribute('hidden', '');
@@ -287,6 +318,7 @@ async function loadDomains() {
             <tr>
               <th>App</th>
               <th>Domain</th>
+              <th>Type</th>
               <th>Roles</th>
               <th>Default role</th>
               <th></th>
@@ -308,6 +340,12 @@ async function loadDomains() {
                   </div>
                 </td>
                 <td><a href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener" style="font-size:.82rem;color:#6366f1;">${esc(d.domain)}</a></td>
+                <td>
+                  ${d.type === 'Restricted'
+                    ? '<span class="role-chip" style="background:rgba(239,68,68,.1);color:#b91c1c;">Restricted</span>'
+                    : '<span class="role-chip" style="background:rgba(16,185,129,.1);color:#065f46;">General</span>'
+                  }
+                </td>
                 <td style="font-size:.8rem;color:#374151;">${(d.roles||[]).map(r => `<span class="role-chip role-chip--user" style="margin:1px;">${esc(r)}</span>`).join('')}</td>
                 <td><span class="role-chip role-chip--superadmin">${esc(d.defaultRole||'—')}</span></td>
                 <td>
@@ -341,6 +379,7 @@ async function loadDomains() {
         document.getElementById('modal-d-logo').value      = d.logo || '';
         document.getElementById('modal-d-color').value     = d.color || '#6366f1';
         document.getElementById('modal-d-roles').value     = (d.roles || []).join('\n');
+        document.getElementById('modal-d-type').value      = d.type || 'General';
         const prev = document.getElementById('modal-d-logo-preview');
         if (d.logo) { prev.src = d.logo; prev.style.display = 'block'; }
         else { prev.style.display = 'none'; }

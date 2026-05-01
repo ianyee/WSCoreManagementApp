@@ -340,7 +340,7 @@ exports.adminSetUserPermissions = onRequest(async (req, res) => {
   const decoded = await assertBearerAdminOrSuperAdmin(req, res);
   if (!decoded) return;
 
-  const { uid, role, domains } = req.body || {};
+  const { uid, role, domains, displayName } = req.body || {};
   if (!uid || typeof uid !== 'string') { res.status(400).json({ error: 'uid required.' }); return; }
   if (!role || !ALLOWED_ROLES.includes(role)) { res.status(400).json({ error: `role must be one of: ${ALLOWED_ROLES.join(', ')}.` }); return; }
   if (domains !== undefined && (typeof domains !== 'object' || Array.isArray(domains))) { res.status(400).json({ error: 'domains must be an object.' }); return; }
@@ -369,6 +369,11 @@ exports.adminSetUserPermissions = onRequest(async (req, res) => {
 
     const permData = { uid, role, domains: domains || {}, updatedAt: FieldValue.serverTimestamp(), updatedBy: decoded.uid };
     await db.doc(`userPermissions/${uid}`).set(permData, { merge: true });
+    if (displayName !== undefined && typeof displayName === 'string') {
+      const trimmed = displayName.trim();
+      await getAuth().updateUser(uid, { displayName: trimmed });
+      await db.doc(`users/${uid}`).set({ displayName: trimmed, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
     await getAuth().setCustomUserClaims(uid, buildClaims(permData));
     await writeAuditLog('setUserPermissions', decoded, { targetUid: uid, role, domains: domains || {} });
     res.status(200).json({ status: 'ok' });

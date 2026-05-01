@@ -12,6 +12,11 @@
  *   admin@workscale.ph       role: Admin        password: password123
  *   user@workscale.ph        role: User         password: password123
  *   pending@workscale.ph     (auth only — no userPermissions doc, simulates first SSO login)
+ *
+ * Domains seeded (app_domains):
+ *   hr.workscale.ph                type: General    roles: viewer/editor/admin
+ *   core.workscale.ph              type: Restricted roles: admin
+ *   wsrecruitment-24f2b.web.app    type: General    roles: viewer/recruiter/manager
  */
 
 import { initializeApp } from 'firebase-admin/app';
@@ -125,6 +130,56 @@ async function seedClients() {
   await batch.commit();
 }
 
+// ─── Seed app_domains ────────────────────────────────────────────────────────
+const APP_DOMAINS = [
+  {
+    id: 'hr.workscale.ph',
+    domain: 'hr.workscale.ph',
+    name: 'HR Management',
+    url: 'https://hr.workscale.ph',
+    description: 'Employee records, payroll, timekeeping, and HR operations.',
+    logo: '',
+    color: '#6366f1',
+    roles: ['viewer', 'editor', 'admin'],
+    defaultRole: 'viewer',
+    type: 'General',
+  },
+  {
+    id: 'core.workscale.ph',
+    domain: 'core.workscale.ph',
+    name: 'Core Management',
+    url: 'https://core.workscale.ph',
+    description: 'User management and portal administration. SuperAdmin access only.',
+    logo: '',
+    color: '#0f172a',
+    roles: ['admin'],
+    defaultRole: 'admin',
+    type: 'Restricted',
+  },
+  {
+    id: 'wsrecruitment-24f2b.web.app',
+    domain: 'wsrecruitment-24f2b.web.app',
+    name: 'Recruitment',
+    url: 'https://wsrecruitment-24f2b.web.app',
+    description: 'Applicant tracking and recruitment pipeline.',
+    logo: '',
+    color: '#0ea5e9',
+    roles: ['viewer', 'recruiter', 'manager'],
+    defaultRole: 'viewer',
+    type: 'General',
+  },
+];
+
+async function seedDomains() {
+  const batch = db.batch();
+  const now = FieldValue.serverTimestamp();
+  for (const d of APP_DOMAINS) {
+    const { id, ...data } = d;
+    batch.set(db.collection('app_domains').doc(id), { ...data, updatedAt: now });
+  }
+  await batch.commit();
+}
+
 // ─── Set custom claims ────────────────────────────────────────────────────────
 async function setAllClaims() {
   for (const acct of ACCOUNTS) {
@@ -158,6 +213,9 @@ async function seed() {
   await seedClients();
   console.log(`  ✓ clients           (${CLIENTS.length})`);
 
+  await seedDomains();
+  console.log(`  ✓ app_domains       (${APP_DOMAINS.length})`);
+
   console.log('\nSetting custom claims…');
   await setAllClaims();
   console.log(`  ✓ claims set`);
@@ -167,6 +225,10 @@ async function seed() {
   console.log('  admin@workscale.ph       role: Admin       password: password123');
   console.log('  user@workscale.ph        role: User        password: password123');
   console.log('  pending@workscale.ph     (no role yet — appears as Pending in admin UI)');
+  console.log('\n── Seeded domains ────────────────────────────────────────────────────');
+  console.log('  hr.workscale.ph                 type: General    (viewer/editor/admin)');
+  console.log('  core.workscale.ph               type: Restricted (admin only)');
+  console.log('  wsrecruitment-24f2b.web.app     type: General    (viewer/recruiter/manager)');
   console.log('─────────────────────────────────────────────────────────────────────\n');
   console.log('Done.');
 }
