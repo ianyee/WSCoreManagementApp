@@ -532,6 +532,11 @@ exports.getClients = onRequest(async (req, res) => {
       res.status(401).json({ error: 'Session invalid or expired.' });
       return;
     }
+    // Rate limit: 60 reads per minute per user (well above normal UI usage)
+    if (!await checkRateLimit(`getClients:${decodedClaims.uid}`, 60)) {
+      res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      return;
+    }
   }
   try {
     const snap = await db.collection('clients').get();
