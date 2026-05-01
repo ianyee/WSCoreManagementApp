@@ -90,15 +90,19 @@ export default function renderDashboard(container) {
             </div>
           </div>` : ''}
 
-          ${user.role === 'SuperAdmin' ? `
+          ${['SuperAdmin', 'Admin'].includes(user.role) ? `
           <div class="card mt-24">
             <div class="card-header">
               <h2 class="card-title">Administration</h2>
             </div>
-            <div class="card-body">
+            <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;">
               <button id="btn-go-admin" class="btn btn--primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 Manage Users
+              </button>
+              <button id="btn-go-clients" class="btn btn--ghost">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+                Clients
               </button>
             </div>
           </div>` : ''}
@@ -124,13 +128,15 @@ export default function renderDashboard(container) {
   // Sign out
   container.querySelector('#btn-signout')?.addEventListener('click', () => signOut());
 
-  // Admin link
+  // Admin links
   document.getElementById('btn-go-admin')?.addEventListener('click', () => router.navigate('/users'));
+  document.getElementById('btn-go-clients')?.addEventListener('click', () => router.navigate('/clients'));
 }
 
 // ─── Sidebar HTML ─────────────────────────────────────────────────────────────
 function renderSidebar(user) {
   const isSuperAdmin = user.role === 'SuperAdmin';
+  const isAdmin = user.role === 'Admin';
   return `
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
@@ -155,7 +161,7 @@ function renderSidebar(user) {
               <span class="nav-label">Apps</span>
             </a>
           </li>
-          ${isSuperAdmin ? `
+          ${(isSuperAdmin || isAdmin) ? `
           <li class="nav-section-label">Administration</li>
           <li>
             <a class="nav-item" data-nav="/users" data-tooltip="Users">
@@ -163,24 +169,26 @@ function renderSidebar(user) {
               <span class="nav-label">Users</span>
             </a>
           </li>
+          ${isSuperAdmin ? `
           <li>
             <a class="nav-item" data-nav="/domains" data-tooltip="Domains">
               <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
               <span class="nav-label">Domains</span>
             </a>
-          </li>
+          </li>` : ''}
           <li>
             <a class="nav-item" data-nav="/clients" data-tooltip="Client Registry">
               <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg></span>
               <span class="nav-label">Clients</span>
             </a>
           </li>
+          ${isSuperAdmin ? `
           <li>
             <a class="nav-item" data-nav="/logs" data-tooltip="Audit Log">
               <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
               <span class="nav-label">Audit Log</span>
             </a>
-          </li>` : ''}
+          </li>` : ''}` : ''}
         </ul>
       </nav>
 

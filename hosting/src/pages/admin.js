@@ -127,6 +127,7 @@ export default async function renderAdmin(container) {
                   <label class="form-label" for="new-name">Display name</label>
                   <input id="new-name" type="text" class="input" placeholder="Juan dela Cruz" />
                 </div>
+                ${state.sessionUser?.role === 'SuperAdmin' ? `
                 <div class="form-field">
                   <label class="form-label" for="new-role">Global role</label>
                   <select id="new-role" class="input">
@@ -134,7 +135,7 @@ export default async function renderAdmin(container) {
                     <option value="Admin">Admin</option>
                     <option value="SuperAdmin">SuperAdmin</option>
                   </select>
-                </div>
+                </div>` : '<input type="hidden" id="new-role" value="User" />'}
                 <div class="form-field form-field--full">
                   <label class="form-label">Domain permissions</label>
                   <div id="new-domain-builder" class="domain-builder">
@@ -178,6 +179,7 @@ export default async function renderAdmin(container) {
         </div>
         <div class="modal-body">
           <input type="hidden" id="modal-uid" />
+          ${state.sessionUser?.role === 'SuperAdmin' ? `
           <div class="form-field">
             <label class="form-label" for="modal-role">Global role</label>
             <select id="modal-role" class="input">
@@ -185,7 +187,7 @@ export default async function renderAdmin(container) {
               <option value="Admin">Admin</option>
               <option value="SuperAdmin">SuperAdmin</option>
             </select>
-          </div>
+          </div>` : '<input type="hidden" id="modal-role" value="User" />'}
           <div class="form-field mt-16">
             <label class="form-label">Domain permissions</label>
             <div id="modal-domain-builder" class="domain-builder"></div>
@@ -336,7 +338,7 @@ function renderUserRows(users) {
             data-domains="${esc(JSON.stringify(u.domains || {}))}">
             ${u.ssoAuto ? 'Assign Role' : 'Edit'}
           </button>
-          ${u.uid !== state.sessionUser.uid ? `
+          ${u.uid !== state.sessionUser.uid && state.sessionUser.role === 'SuperAdmin' ? `
           <button class="btn btn--danger btn--sm btn-delete-user" data-uid="${esc(u.uid)}" data-email="${esc(u.email)}">
             Delete
           </button>` : ''}
@@ -350,7 +352,9 @@ function attachRowHandlers(wrap) {
   wrap.querySelectorAll('.btn-edit-perms').forEach((btn) => {
     btn.addEventListener('click', async () => {
       document.getElementById('modal-uid').value = btn.dataset.uid;
-      document.getElementById('modal-role').value = btn.dataset.role;
+      // For Admin: the role hidden input preserves the user's current role (Admin cannot change it)
+      const roleEl = document.getElementById('modal-role');
+      if (roleEl) roleEl.value = btn.dataset.role;
       await initDomainBuilder(
         document.getElementById('modal-domain-builder'),
         JSON.parse(btn.dataset.domains || '{}')
@@ -591,6 +595,7 @@ function closeModal() {
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function renderSidebar() {
+  const isSuperAdmin = state.sessionUser?.role === 'SuperAdmin';
   return `
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
@@ -615,24 +620,26 @@ function renderSidebar() {
               <span class="nav-label">Users</span>
             </a>
           </li>
+          ${isSuperAdmin ? `
           <li>
             <a class="nav-item" data-nav="/domains" data-tooltip="Domains">
               <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
               <span class="nav-label">Domains</span>
             </a>
-          </li>
+          </li>` : ''}
           <li>
             <a class="nav-item" data-nav="/clients" data-tooltip="Client Registry">
               <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg></span>
               <span class="nav-label">Clients</span>
             </a>
           </li>
+          ${isSuperAdmin ? `
           <li>
             <a class="nav-item" data-nav="/logs" data-tooltip="Audit Log">
               <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
               <span class="nav-label">Audit Log</span>
             </a>
-          </li>
+          </li>` : ''}
         </ul>
       </nav>
       <div class="nav-menu nav-menu--bottom">
@@ -665,17 +672,23 @@ function avatarColor(name = '') {
 async function initDomainBuilder(container, initialDomains = {}) {
   container.innerHTML = '<div class="table-loading" style="font-size:.8rem;">Loading domains…</div>';
   const registered = await getRegisteredDomains();
+  const isAdmin = state.sessionUser?.role === 'Admin';
 
   container.innerHTML = '';
   container.className = 'domain-builder';
 
-  if (!registered.length) {
-    container.innerHTML = '<p style="font-size:.8rem;color:#6b7280;">No domains registered yet. <a data-nav="/domains" style="color:#6366f1;cursor:pointer;">Register one first.</a></p>';
+  // Admin cannot assign Restricted domains — filter them out
+  const visible = isAdmin ? registered.filter(d => d.type !== 'Restricted') : registered;
+
+  if (!visible.length) {
+    container.innerHTML = isAdmin
+      ? '<p style="font-size:.8rem;color:#6b7280;">No General domains available to assign.</p>'
+      : '<p style="font-size:.8rem;color:#6b7280;">No domains registered yet. <a data-nav="/domains" style="color:#6366f1;cursor:pointer;">Register one first.</a></p>';
     container.querySelector('[data-nav]')?.addEventListener('click', () => router.navigate('/domains'));
     return;
   }
 
-  registered.forEach(d => {
+  visible.forEach(d => {
     const currentAccess = initialDomains[d.domain];
     const hasAccess = !!currentAccess;
     const currentRole = currentAccess?.role || d.defaultRole || (d.roles?.[0] ?? '');

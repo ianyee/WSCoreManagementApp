@@ -16,27 +16,27 @@ const routes = [
   },
   {
     path: '/dashboard',
-    requiredRole: 'SuperAdmin',
+    allowedRoles: ['SuperAdmin', 'Admin'],
     loader: () => import('./pages/dashboard.js'),
   },
   {
     path: '/users',
-    requiredRole: 'SuperAdmin',
+    allowedRoles: ['SuperAdmin', 'Admin'],
     loader: () => import('./pages/admin.js'),
   },
   {
     path: '/domains',
-    requiredRole: 'SuperAdmin',
+    allowedRoles: ['SuperAdmin'],
     loader: () => import('./pages/domains.js'),
   },
   {
     path: '/logs',
-    requiredRole: 'SuperAdmin',
+    allowedRoles: ['SuperAdmin'],
     loader: () => import('./pages/logs.js'),
   },
   {
     path: '/clients',
-    requiredRole: 'SuperAdmin',
+    allowedRoles: ['SuperAdmin', 'Admin'],
     loader: () => import('./pages/clients.js'),
   },
 ];
@@ -67,15 +67,16 @@ async function render(path) {
     return;
   }
 
-  // Guard: role check — non-SuperAdmins can only access /apps and /login
-  if (route.requiredRole && state.sessionUser?.role !== route.requiredRole) {
+  // Guard: role check — only users whose role is in allowedRoles may access
+  const allowedRoles = route.allowedRoles;
+  if (allowedRoles && !allowedRoles.includes(state.sessionUser?.role)) {
     navigate('/apps');
     return;
   }
 
-  // Already on login page but authenticated → send to /apps or /dashboard
+  // Already on login page but authenticated → send to /apps
   if (route.public && state.sessionUser && path !== '/apps') {
-    navigate(state.sessionUser.role === 'SuperAdmin' ? '/dashboard' : '/apps');
+    navigate('/apps');
     return;
   }
 

@@ -65,6 +65,17 @@ async function assertBearerSuperAdmin(req, res) {
   return decoded;
 }
 
+// ─── Helper: verify Bearer token AND assert Admin or SuperAdmin role ──────────
+async function assertBearerAdminOrSuperAdmin(req, res) {
+  const decoded = await verifyBearerToken(req, res);
+  if (!decoded) return null;
+  if (!['SuperAdmin', 'Admin'].includes(decoded.role)) {
+    res.status(403).json({ error: 'Admin or SuperAdmin role required.' });
+    return null;
+  }
+  return decoded;
+}
+
 // ─── Helper: verify App Check token ──────────────────────────────────────────
 async function verifyAppCheck(req, res) {
   // Skip enforcement in the local Functions emulator
@@ -326,7 +337,7 @@ exports.adminSetUserPermissions = onRequest(async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed.' }); return; }
   if (!await verifyAppCheck(req, res)) return;
 
-  const decoded = await assertBearerSuperAdmin(req, res);
+  const decoded = await assertBearerAdminOrSuperAdmin(req, res);
   if (!decoded) return;
 
   const { uid, role, domains } = req.body || {};
@@ -334,7 +345,28 @@ exports.adminSetUserPermissions = onRequest(async (req, res) => {
   if (!role || !ALLOWED_ROLES.includes(role)) { res.status(400).json({ error: `role must be one of: ${ALLOWED_ROLES.join(', ')}.` }); return; }
   if (domains !== undefined && (typeof domains !== 'object' || Array.isArray(domains))) { res.status(400).json({ error: 'domains must be an object.' }); return; }
 
+  // Admin cannot elevate users to Admin/SuperAdmin
+  if (decoded.role === 'Admin' && role !== 'User') {
+    res.status(403).json({ error: 'Admin role cannot assign Admin or SuperAdmin roles.' });
+    return;
+  }
+
   try {
+    // Admin cannot assign Restricted-type domains
+    if (decoded.role === 'Admin' && domains && Object.keys(domains).length > 0) {
+      const domainSnaps = await Promise.all(
+        Object.keys(domains).map(d => db.collection('app_domains').where('domain', '==', d).limit(1).get())
+      );
+      const restricted = domainSnaps
+        .flatMap(s => s.docs)
+        .filter(doc => doc.data().type === 'Restricted')
+        .map(doc => doc.data().domain);
+      if (restricted.length > 0) {
+        res.status(403).json({ error: `Admin cannot assign Restricted domains: ${restricted.join(', ')}.` });
+        return;
+      }
+    }
+
     const permData = { uid, role, domains: domains || {}, updatedAt: FieldValue.serverTimestamp(), updatedBy: decoded.uid };
     await db.doc(`userPermissions/${uid}`).set(permData, { merge: true });
     await getAuth().setCustomUserClaims(uid, buildClaims(permData));
@@ -352,7 +384,7 @@ exports.adminCreateUser = onRequest(async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed.' }); return; }
   if (!await verifyAppCheck(req, res)) return;
 
-  const decoded = await assertBearerSuperAdmin(req, res);
+  const decoded = await assertBearerAdminOrSuperAdmin(req, res);
   if (!decoded) return;
 
   // Rate limit: 10 user creations per minute per calling admin
@@ -365,7 +397,8 @@ exports.adminCreateUser = onRequest(async (req, res) => {
   if (!email || !password) { res.status(400).json({ error: 'email and password required.' }); return; }
   if (typeof email !== 'string' || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { res.status(400).json({ error: 'Invalid email.' }); return; }
   if (typeof password !== 'string' || password.length < 8) { res.status(400).json({ error: 'Password must be at least 8 characters.' }); return; }
-  const safeRole = ALLOWED_ROLES.includes(role) ? role : 'User';
+  // Admin can only create User-role accounts; SuperAdmin can set any role
+  const safeRole = decoded.role === 'Admin' ? 'User' : (ALLOWED_ROLES.includes(role) ? role : 'User');
   if (domains !== undefined && (typeof domains !== 'object' || Array.isArray(domains))) { res.status(400).json({ error: 'domains must be an object.' }); return; }
 
   try {
@@ -423,7 +456,7 @@ exports.adminListUsers = onRequest(async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed.' }); return; }
   if (!await verifyAppCheck(req, res)) return;
 
-  const decoded = await assertBearerSuperAdmin(req, res);
+  const decoded = await assertBearerAdminOrSuperAdmin(req, res);
   if (!decoded) return;
 
   const params = req.method === 'GET' ? req.query : (req.body || {});
@@ -518,7 +551,7 @@ exports.getAdminStats = onRequest(async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed.' }); return; }
   if (!await verifyAppCheck(req, res)) return;
 
-  const decoded = await assertBearerSuperAdmin(req, res);
+  const decoded = await assertBearerAdminOrSuperAdmin(req, res);
   if (!decoded) return;
 
   try {

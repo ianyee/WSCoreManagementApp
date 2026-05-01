@@ -183,8 +183,8 @@ export function initAuth() {
         const token = await firebaseUser.getIdTokenResult();
         const role = token.claims.role || 'User';
 
-        if (role !== 'SuperAdmin') {
-          // Non-SuperAdmins land on the /apps page to see their accessible domains.
+        if (!['SuperAdmin', 'Admin'].includes(role)) {
+          // Regular users land on the /apps page to see their accessible domains.
           state.sessionUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -204,7 +204,8 @@ export function initAuth() {
           role,
           domains: token.claims.domains || {},
         };
-        router.navigate(state.lastRoute || '/dashboard');
+        // Both SuperAdmin and Admin land on /apps (default); they can navigate to /dashboard manually
+        router.navigate(state.lastRoute || '/apps');
       } catch (err) {
         console.error('[auth] onAuthStateChanged error:', err);
         showToast(err.message || 'Failed to load session. Please sign in again.', 'error');
